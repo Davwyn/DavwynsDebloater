@@ -237,7 +237,6 @@ Function Bloatware_Appx {
         "*CaesarsSlotsFreeCasino*"
         "*Shazam*"
         "*SlingTV*"
-        "*SpotifyMusic*"
         "*NYTCrossword*"
         "*PhototasticCollage*"
         "*TuneInRadio*"
