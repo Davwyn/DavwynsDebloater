@@ -1125,7 +1125,7 @@ Function Remove_Edge {
     if ($decision -eq 0) {
         if ($Target -eq "Online") {
             Get-Process -Name "*Edge*" | Stop-Process -Force
-            taskkill /f /im msedge.exe | Out-Null
+            taskkill /f /im msedge.exe 2>$Null | Out-Null
         }
         if (Test-Path "$MountDir`Program Files (x86)\Microsoft\Edge"){
             takeown /f "$MountDir`Program Files (x86)\Microsoft\Edge"
@@ -1201,9 +1201,10 @@ Function Remove_OneDrive {
     if ($decision -eq 0) {
         Write-Host ""
         Write-Host "Attempting to uninstall OneDrive..." -ForegroundColor White -BackgroundColor DarkGreen
+        Write-Host "Please note: This may take a long time if you enabled Known Folder Redirection aka Backup With OneDrive. Please be patient." -ForegroundColor Yellow -BackgroundColor Black
         if ($Target -eq "Online"){
-            Get-Process -Name "*OneDrive*" | Stop-Process -Force
-            taskkill /f /im OneDrive.exe | Out-Null
+            Get-Process -Name "*OneDrive*" | Stop-Process -Force | Out-Null
+            taskkill /f /im OneDrive.exe 2>$Null | Out-Null
         }
         if (Test-Path "$MountDir`Windows\System32\OneDriveSetup.exe") {
             if ($Target -eq "Online"){
@@ -1244,14 +1245,23 @@ Function Clean_StartMenu {
 	    
         if ($WinVer -eq 10) {
             $startlayout=@"
-	<LayoutModificationTemplate xmlns:defaultlayout="http://schemas.microsoft.com/Start/2014/FullDefaultLayout" xmlns:start="http://schemas.microsoft.com/Start/2014/StartLayout" Version="1" xmlns="http://schemas.microsoft.com/Start/2014/LayoutModification">
-	  <LayoutOptions StartTileGroupCellWidth="6" />
-	  <DefaultLayoutOverride>
-		<StartLayoutCollection>
-		  <defaultlayout:StartLayout GroupCellWidth="6">
-		</StartLayoutCollection>
-	  </DefaultLayoutOverride>
-	</LayoutModificationTemplate>
+<?xml version="1.0" encoding="utf-8"?>
+<LayoutModificationTemplate xmlns:defaultlayout="http://schemas.microsoft.com/Start/2014/FullDefaultLayout" xmlns:start="http://schemas.microsoft.com/Start/2014/StartLayout" Version="1" xmlns="http://schemas.microsoft.com/Start/2014/LayoutModification" xmlns:taskbar="http://schemas.microsoft.com/Start/2014/TaskbarLayout">
+  <DefaultLayoutOverride LayoutCustomizationRestrictionType="OnlySpecifiedGroups">
+    <StartLayoutCollection>
+      <defaultlayout:StartLayout GroupCellWidth="6">
+
+      </defaultlayout:StartLayout>
+    </StartLayoutCollection>
+  </DefaultLayoutOverride>
+  <CustomTaskbarLayoutCollection PinListPlacement="Replace">
+    <defaultlayout:TaskbarLayout>
+      <taskbar:TaskbarPinList>
+        <taskbar:DesktopApp DesktopApplicationLinkPath="%APPDATA%\Microsoft\Windows\Start Menu\Programs\System Tools\File Explorer.lnk" />
+      </taskbar:TaskbarPinList>
+    </defaultlayout:TaskbarLayout>
+  </CustomTaskbarLayoutCollection>
+</LayoutModificationTemplate>
 "@
 	        $startlayout | Out-File $ENV:TEMP\StartLayout.xml
             Import-StartLayout -LayoutPath $ENV:TEMP\StartLayout.xml -MountPath $MountDir -Verbose
