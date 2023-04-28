@@ -4,7 +4,7 @@
         [Parameter(Mandatory=$false)][Bool]$Debloat,
         [Parameter(Mandatory=$false)][Bool]$InstallSoftware
     )
-#Version: 1.0.0
+#Version: 1.0.1
 Set-ExecutionPolicy Bypass -Scope Process
 
 If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]'Administrator')) {
@@ -50,6 +50,9 @@ New-Variable -Name Disable_EdgePDF -Scope Script
 $Host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(300, 5000)
 $Host.UI.RawUI.BackgroundColor = "Black"
 $Host.UI.RawUI.ForegroundColor = "White"
+
+#Special thanks to testers:
+#Skybox, Omega
 
 if (!$Target) {$Target = "Online"}
 
@@ -1543,7 +1546,7 @@ Function System_Tweaks {
     if ($decision -eq 0) {
         Write-Host "Defaulting to This PC view in Explorer" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path -LiteralPath "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {New-Item "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue};
-        New-ItemProperty -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "LaunchTo" -PropertyType DWord -Value 1
+        New-ItemProperty -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "LaunchTo" -PropertyType DWord -Value 1 -Force
 
         if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue};
         New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "LaunchTo" -PropertyType DWord -Value 1 -Force
@@ -1584,7 +1587,7 @@ Function System_Tweaks {
     if ($decision -eq 0) {
         Write-Host "Disabling Clipboard History" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path -LiteralPath "Reg_HKCU:\Software\Microsoft\Clipboard")) {New-Item "Reg_HKCU:\Software\Microsoft\Clipboard" -force -ea SilentlyContinue};
-        New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Clipboard" -Name "EnableClipboardHistory" -PropertyType DWord -Value 0
+        New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Clipboard" -Name "EnableClipboardHistory" -PropertyType DWord -Value 0 -Force
 
         if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Clipboard")) {New-Item "Reg_HKDefaultUser:\Software\Microsoft\Clipboard" -force -ea SilentlyContinue};
         New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Clipboard" -Name "EnableClipboardHistory" -PropertyType DWord -Value 0 -Force
