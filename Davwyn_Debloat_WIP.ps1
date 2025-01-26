@@ -4,7 +4,7 @@
         [Parameter(Mandatory=$false)][Bool]$Debloat,
         [Parameter(Mandatory=$false)][Bool]$InstallSoftware
     )
-$ScriptVersion = 1.1.0
+$ScriptVersion = "1.1.0"
 $ScriptVersionDate = "Jan 26, 2025"
 Set-ExecutionPolicy Bypass -Scope Process
 Write-Host "Script Version: $ScriptVersion"
@@ -1282,7 +1282,7 @@ Function Clean_StartMenu {
         }
 	
 	    if ($WinVer -eq 11) {
-            $W11StartLayout= '{"pinnedList":[{"packagedAppId":"windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel"},{"desktopAppLink":"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\File Explorer.lnk"},{"desktopAppLink":"%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\Microsoft Edge.lnk"},{"desktopAppLink":"%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\Word.lnk"},{"desktopAppLink":"%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\Excel.lnk"},{"desktopAppLink":"%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\PowerPoint.lnk"}]}'
+            $W11StartLayout= '{"pinnedList":[{"packagedAppId":"windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel"},{"desktopAppLink":"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\File Explorer.lnk"}]}'
 
 	        #$W11StartLayout | Out-File "$MountDir`Users\Default\Appdata\Local\Microsoft\Windows\Shell\LayoutModification.json" -Force
 	        #if ((Test-Path -Path "$MountDir`Users\Default\Appdata\Local\Microsoft\Windows\Shell\LayoutModification.xml") -eq $true) {Remove-Item "$MountDir`Users\Default\Appdata\Local\Microsoft\Windows\Shell\LayoutModification.xml" -Force}
