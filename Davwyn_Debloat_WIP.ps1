@@ -4,8 +4,11 @@
         [Parameter(Mandatory=$false)][Bool]$Debloat,
         [Parameter(Mandatory=$false)][Bool]$InstallSoftware
     )
-#Version: 1.0.1
+$ScriptVersion = 1.1.0
+$ScriptVersionDate = "Jan 26, 2025"
 Set-ExecutionPolicy Bypass -Scope Process
+Write-Host "Script Version: $ScriptVersion"
+Write-Host "Script Modified Date: $ScriptVersionDate"
 
 If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]'Administrator')) {
     Write-Host "You didn't run this script as an Administrator. This script will self elevate to run as an Administrator and continue."
@@ -22,13 +25,13 @@ If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
 
 Add-Type -AssemblyName PresentationCore, PresentationFramework
 
-#$ErrorActionPreference = 'silentlycontinue'
+$ErrorActionPreference = 'Continue'
 $LogFolder = $PSScriptRoot
 
 If (!(Test-Path $LogFolder)) {
-    Write-Output "The folder '$LogFolder' doesn't exist. This folder will be used for storing logs created after the script runs. Creating now."
+    Write-Host "The folder '$LogFolder' doesn't exist. This folder will be used for storing logs created after the script runs. Creating now."
     New-Item -Path "$LogFolder" -ItemType Directory
-    Write-Output "The folder $LogFolder was successfully created."
+    Write-Host "The folder $LogFolder was successfully created."
 }
 
 Start-Transcript -OutputDirectory $LogFolder
@@ -76,15 +79,18 @@ if ($Target -ne "Online") {
     1 {$WinVer = 11}
     }
 } elseif ($Target -eq "Online") {
-    $WindowsProductName = Get-ComputerInfo | select WindowsProductName
+    $WindowsProductName = (Get-CIMInstance -Class Win32_OperatingSystem).Caption
     if ($WindowsProductName -like "*Windows 10*") {
         $WinVer = 10
+        Write-Host "Detected OS to be Windows 10"
     } elseif ($WindowsProductName -like "*Windows 11*") {
         $WinVer = 11
+        Write-Host "Detected OS to be Windows 11"
     } else {
         Write-Host "Sorry, this Debloat script was designed only for Windows 10 and Windows 11 in mind. It could potentially do damage to other Windows versions."
-        Exit 1
         Write-Error "Operating system must be Windows 10 or 11" -ErrorAction Stop
+        Pause
+        Exit 1
     }
 }
 
@@ -98,23 +104,21 @@ $UserRegs = @()
 
 Function Gather_Packages {
     #Get Appx Packages, Appx Provisioned Packages and System Packages
-    Write-Host ""
-    Write-Host "Getting Appx Packages, AppxProvisionedPackages, and System Packages..." -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "`nGetting Appx Packages, AppxProvisionedPackages, and System Packages..." -ForegroundColor White -BackgroundColor DarkGreen
     if ($Target -eq "Online") {
-        $Script:AppxPackages = Get-AppxPackage
+        $Script:AppxPackages = Get-AppxPackage -AllUsers
         $Script:AppxProvisionedPackages = Get-AppxProvisionedPackage -Online
-        $Script:System_Packages = dism /Online /Get-Packages /Format:list
+        $Script:System_Packages = Get-WindowsCapability -Online | Where-Object {($_.State -notin @('NotPresent', 'Removed'))}
     } else {
         $MountDir = $Target
         New-Item -Path "$MountDir`\Scratch" -ItemType Directory -Force
         $Script:AppxProvisionedPackages = Get-AppxProvisionedPackage -Path $MountDir
-        $Script:System_Packages = dism /Image:$Target /Get-Packages /Format:list
+        $Script:System_Packages = Get-WindowsCapability -Path $Target | Where-Object {($_.State -notin @('NotPresent', 'Removed'))}
     }
 }
 
 Function Bloatware_Appx {
-    Write-Host ""
-    Write-Host "--Appx Packages--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--Appx Packages--" -ForegroundColor White -BackgroundColor DarkCyan
 
     $title    = "Remove Appx App?"
     $choices  = "&Yes", "&No"
@@ -131,11 +135,11 @@ Function Bloatware_Appx {
         @{Item="Microsoft.WindowsAlarms";Desc="The Clock and Alarm app.`nHas a basic clock, stopwatch, and timer feature."},
         @{Item="Microsoft.WindowsCamera";Desc="A basic webcam camera app to see what your webcam sees and take basic pictures."},
         @{Item="Microsoft.YourPhone";Desc="App to connect to your cell phone if you install the companion app.`nAllows you to view test messages and other things from your phone.`nWhile using this Microsoft might spy on your text messages and content."},
-        @{Item="Microsoft.MinecraftUWP";Desc="The Windows 10 edition aka Bedrock edition of Minecraft.`nA Minecraft license is required to use it.`nYou can reinstall this from the windows store if you want it later."}
+        @{Item="Microsoft.MinecraftUWP";Desc="The Windows 10 edition aka Bedrock edition of Minecraft.`nA Minecraft license is required to use it.`nYou can reinstall this from the windows store if you want it later."},
+        @{Item="Microsoft.OutlookForWindows";Desc="A basic version of Microsoft Outlook desktop app."}
     ) | % { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
     
-    Write-Host ""
-    Write-Host "The following Appx Apps are sometimes wanted. Only answer Yes if you wish to remove them." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nThe following Appx Apps are sometimes wanted. Only answer Yes if you wish to remove them." -ForegroundColor White -BackgroundColor DarkCyan
 
     foreach ($Bloat in $Bloatware) {
         if (($Script:AppxPackages | Where-Object Name -like $($Bloat.Item)) -or ($Script:AppxProvisionedPackages | Where-Object DisplayName -like $($Bloat.Item))) {
@@ -183,12 +187,12 @@ Function Bloatware_Appx {
         @{Item="Microsoft.CommsPhone";Desc="Enables users to make and receive phone calls from their windows pc."},
         @{Item="Microsoft.Wallet";Desc="Is a digital wallet app that enables users to store and manage their payment cards and passes."},
         @{Item="Microsoft.MixedReality.Portal";Desc="Is a mixed reality headset software app for VR."},
-        @{Item="MicrosoftCorporationII.MicrosoftFamily";Desc="Provides parental controls and family management features for Microsoft accounts."}
+        @{Item="MicrosoftCorporationII.MicrosoftFamily";Desc="Provides parental controls and family management features for Microsoft accounts."},
+        @{Item="Microsoft.BingSearch";Desc="Description"}
     ) | % { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 
 
-    Write-Host ""
-    Write-Host "The following Appx Apps are usually not wanted." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nThe following Appx Apps are usually not wanted." -ForegroundColor White -BackgroundColor DarkCyan
 
     foreach ($Bloat in $Bloatware) {
         if (($Script:AppxPackages | Where-Object Name -like $($Bloat.Item)) -or ($Script:AppxProvisionedPackages | Where-Object DisplayName -like $($Bloat.Item))) {
@@ -231,7 +235,6 @@ Function Bloatware_Appx {
         "*FarmVille*"
         "*Duolingo*"
         "*CyberLinkMediaSuiteEssentials*"
-        "*DolbyAccess*"
         "*DrawboardPDF*"
         "*Fitbit*"
         "*Asphalt8Airborne*"
@@ -253,13 +256,12 @@ Function Bloatware_Appx {
         "*TikTok*"
     )
 
-    Write-Host ""
-    Write-Host "The apps listed below are all sponsored apps Windows pushed onto your PC.`nYou can always reinstall these from the Windows Store if you want." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nThe apps listed below are all sponsored apps Windows pushed onto your PC.`nYou can always reinstall these from the Windows Store if you want." -ForegroundColor White -BackgroundColor DarkCyan
 
     $SponsoredInstalled = @()
     foreach ($Bloat in $Sponsored) {
         if (($Script:AppxPackages | Where-Object Name -like $Bloat) -or ($Script:AppxProvisionedPackages | Where-Object DisplayName -like $Bloat)) {
-            Write-Host $Bloat
+            Write-Output $Bloat
             $SponsoredInstalled += $Bloat
         }
     }
@@ -270,67 +272,69 @@ Function Bloatware_Appx {
         $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
         if ($decision -eq 0) {$Script:Appx_RemovalList += $SponsoredInstalled}
     } else {
-        Write-Host ""
-        Write-Host "It seems you have no sponsored apps installed. Yay!" -ForegroundColor White -BackgroundColor DarkCyan
+        Write-Host "`nIt seems you have no sponsored apps installed. Yay!" -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
 Function Remove_Appx {
-    Write-Host ""
-    Write-Host "Uninstalling Appx bloatware..." -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "`nUninstalling Appx bloatware..." -ForegroundColor White -BackgroundColor DarkGreen
 
     if ($Target -eq "Online") {
         foreach ($RemoveBloat in $Script:Appx_RemovalList) {
             Write-Host "Trying to remove $RemoveBloat" -ForegroundColor White -BackgroundColor DarkBlue
-            $Script:AppxProvisionedPackages | Where-Object DisplayName -like $RemoveBloat | Remove-AppxProvisionedPackage -Online -AllUsers
-            $Script:AppxPackages | Where-Object Name -like $RemoveBloat | Remove-AppxPackage -AllUsers
+            try {
+                $Script:AppxProvisionedPackages | Where-Object DisplayName -like $RemoveBloat | Remove-AppxProvisionedPackage -Online -AllUsers -ErrorAction Stop -Verbose
+            } Catch {
+                Write-Host "Error: Failed to remove Provisioning Package $RemoveBloat Error: $_"
+            }
+            Write-Host "Trying to remove $RemoveBloat Appx Package"
+            Try {
+                $Script:AppxPackages | Where-Object Name -like $RemoveBloat | Remove-AppxPackage -AllUsers -ErrorAction Stop -Verbose
+            } Catch {
+                Write-Host "Error: Failed to remove Appx Package $RemoveBloat Error: $_"
+            }
         }
     } else {
         foreach ($RemoveBloat in $Script:Appx_RemovalList) {
             Write-Host "Trying to remove $RemoveBloat" -ForegroundColor White -BackgroundColor DarkBlue
-            $Script:AppxProvisionedPackages | Where-Object DisplayName -like $RemoveBloat | Remove-AppxProvisionedPackage -Path $MountDir
+            $Script:AppxProvisionedPackages | Where-Object DisplayName -like $RemoveBloat | Remove-AppxProvisionedPackage -Path $MountDir -ErrorAction Continue -Verbose
         }
    }
-   Write-Host ""
-   Write-Host "Appx Bloatware removed." -ForegroundColor White -BackgroundColor DarkCyan
+   Write-Host "`nAppx Bloatware removed." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Bloatware_SysPackages {
-    Write-Host ""
-    Write-Host "--System Packages--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--System Packages--" -ForegroundColor White -BackgroundColor DarkCyan
 
     $title    = "Remove System Package?"
     $choices  = "&Yes", "&No"
 
     $BloatPackages = @(
-        @{Item="Microsoft-Windows-Kernel-LA57-FoD-Package";Desc="Provides kernel support for the ARM64 Cortex-A57 processor. If this is a traditional desktop you can remove it."},
-	    @{Item="Microsoft-Windows-InternetExplorer-Optional-Package";Desc="Old Internet Explorer. Unless you really need it remove it for security sake!"},
-        @{Item="Microsoft-Windows-LanguageFeatures-Handwriting";Desc="Touch-based handwriting features. If you don't use tablet features you can remove this."},
-        @{Item="Microsoft-Windows-LanguageFeatures-OCR";Desc="Optical Character Recognition. Used to scan image of text and turn it into editable text.`nDon't remove this if you use text scanning features like PowerToys screen grabber for text."},
-        @{Item="Microsoft-Windows-LanguageFeatures-Speech";Desc="Voice to Text functionality such as dictation software. You can remove it if you don't plan on using it."},
-        @{Item="Microsoft-Windows-LanguageFeatures-TextToSpeech";Desc="TTS or Text-To-Speech. Voices such as Microsoft SAM that reads text out loud to you. Remove it if you have no use for it."},
-        @{Item="Microsoft-Windows-MediaPlayer";Desc="The old fashioned Windows Media player from Windows XP days. Suggested to remove this and use VideoLan VLC Player instead."},
-        @{Item="Microsoft-Windows-TabletPCMath";Desc="Feature to input complex mathimaical symbols into your computer. Keep this if you need to enter in math formulas."},
-        @{Item="Microsoft-Windows-Wallpaper-Content-Extended-FoD-Package";Desc="Windows Wallpaper pack. Doesn't do much but save some disk space if you remove it."},
-        @{Item="Microsoft-Windows-Hello-Face-Package";Desc="Windows Face Unlock feature. If you don't have a Windows Hello compatible camera or even want to use Windows Hello you can remove this."},
-        @{Item="Microsoft-Windows-StepsRecorder-Package";Desc="An old troubleshooting tool that takes screenshots with every click of the mouse.`nThis old program only saves in an unsupported Internet Explorer format."}        
+        @{Item="Windows.Kernel.LA57";Desc="Unknown what LA57 does"},
+	    @{Item="Browser.InternetExplorer";Desc="Old Internet Explorer. Unless you really need it remove it for security sake!"},
+        @{Item="Media.WindowsMediaPlayer";Desc="The old fashioned Windows Media player from Windows XP days. Suggested to remove this and use VideoLan VLC Player instead."},
+        @{Item="Microsoft.Wallpapers.Extended";Desc="Windows Wallpaper pack. Doesn't do much but save some disk space if you remove it."}
+        @{Item="Hello.Face";Desc="Windows Face Unlock feature. If you don't have a Windows Hello compatible camera or even want to use Windows Hello you can remove this."},
+        @{Item="Language.Handwriting";Desc="Touch-based handwriting features. If you don't use tablet features you can remove this."},
+        @{Item="Language.OCR";Desc="Optical Character Recognition. Used to scan image of text and turn it into editable text.`nDon't remove this if you use text scanning features like PowerToys screen grabber for text."},
+        @{Item="Language.Speech";Desc="Voice to Text functionality such as dictation software. You can remove it if you don't plan on using it."},
+        @{Item="Language.TextToSpeech";Desc="TTS or Text-To-Speech. Voices such as Microsoft SAM that reads text out loud to you. Remove it if you have no use for it."},
+        #@{Item="MathRecognizer";Desc="Feature to input complex mathimaical symbols into your computer. Keep this if you need to enter in math formulas."},
+        @{Item="App.StepsRecorder";Desc="An old troubleshooting tool that takes screenshots with every click of the mouse.`nThis old program only saves in an unsupported Internet Explorer format."}        
     ) | % { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 
 
-    Write-Host ""
-    Write-Host "The following are Windows system packages you can optionally remove.`nThis cannot be undone to choose carefully." -ForegroundColor White -BackgroundColor DarkCyan 
+    Write-Host "`nThe following are Windows system packages you can optionally remove.`nThis cannot be undone to choose carefully." -ForegroundColor White -BackgroundColor DarkCyan 
     
     foreach ($BloatPackage in $BloatPackages) {
-        $PackageArray = $Script:System_Packages | Select-String $($BloatPackage.Item)
+        $PackageArray = $Script:System_Packages | Where-Object {$_.Name -like "$($BloatPackage.Item)*"}
         if ($PackageArray) {
             $question = "Remove system package $($BloatPackage.Item)`?`nInfo: $($BloatPackage.Desc)"
             $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
             if ($decision -eq 0) {
                 foreach ($PackageArrayItem in $PackageArray) {
-                    $PackageArrayItem -match ".*($([regex]::escape($($BloatPackage.Item))).*)" | Out-Null
-                    $Package = $matches[1]
-                    $Script:System_Packages_RemovalList += $Package
-                    Write-Host "Package marked to remove: $Package"
+                    $Script:System_Packages_RemovalList += $PackageArrayItem.Name
+                    Write-Output "Package marked to remove: $($PackageArrayItem.Name)"
                 }
             }
         }
@@ -338,24 +342,23 @@ Function Bloatware_SysPackages {
 }
 
 Function Remove_SysPackages {
-    Write-Host ""
-    Write-Host "Removing Unwanted System Packages..." -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "`nRemoving Unwanted System Packages..." -ForegroundColor White -BackgroundColor DarkGreen
 
     foreach ($Package in $Script:System_Packages_RemovalList){
         Write-Host "Removing $Package..." -ForegroundColor White -BackgroundColor DarkBlue
         if ($Target -eq "Online") {
-            dism /Online /Remove-Package /NoRestart /PackageName:$Package
+            Remove-WindowsCapability -Online -Name $Package
+            #dism /Online /Remove-Package /NoRestart /PackageName:$Package
         } else {
-            dism /Image:$Target /Remove-Package /NoRestart /PackageName:$Package /ScratchDir:"$MountDir`\Scratch"
+            Remove-WindowsCapability -Path $target -Name $Package
+            #dism /Image:$Target /Remove-Package /NoRestart /PackageName:$Package /ScratchDir:"$MountDir`\Scratch"
         }
     }
-    Write-Host ""
-    Write-Host "Unwanted packages removed." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nUnwanted packages removed." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Bloatware_Xbox {
-    Write-Host ""
-    Write-Host "--Xbox App and Components--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--Xbox App and Components--" -ForegroundColor White -BackgroundColor DarkCyan
     
     $title    = "Remove Xbox?"
     $choices  = "&Yes", "&No"
@@ -389,8 +392,7 @@ Function Bloatware_Xbox {
             $Script:Remove_Xbox = $true
         }
     } else {
-        Write-Host ""
-        Write-Host "It seems the Xbox features are already removed." -ForegroundColor White -BackgroundColor DarkCyan
+        Write-Host "`nIt seems the Xbox features are already removed." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
@@ -411,7 +413,7 @@ Function Remove_Xbox {
                 }
         } else {
             $registryPath = "Reg_HKLM_SYSTEM:\ControlSet001\Services\$Service"
-            Write-Host "Trying to disable $Service"
+            Write-Output "Trying to disable $Service"
             if (Test-Path $registryPath) {New-ItemProperty $registryPath Start -Value 4 -PropertyType Dword -Force}
         }
     }
@@ -445,6 +447,10 @@ Function Remove_Xbox {
 	if(!(Test-Path "Reg_HKDefaultUser:\System\GameConfigStore")){ New-Item -Path "Reg_HKDefaultUser:\System\GameConfigStore" -Force -ErrorAction SilentlyContinue}
 	New-ItemProperty -Path "Reg_HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -Value 0 -PropertyType DWord -Force
 	New-ItemProperty -Path "Reg_HKDefaultUser:\System\GameConfigStore" -Name "GameDVR_Enabled" -Value 0 -PropertyType DWord -Force
+    if(!(Test-Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR")){ New-Item -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Force -ErrorAction SilentlyContinue}
+    New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value 0 -PropertyType DWord -Force
+    if(!(Test-Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\GameDVR")){ New-Item -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Force -ErrorAction SilentlyContinue}
+    New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value 0 -PropertyType DWord -Force
 
     if ($Target -eq "Online") {
         Get-ScheduledTask  XblGameSaveTaskLogon -ErrorAction SilentlyContinue | Disable-ScheduledTask
@@ -459,13 +465,11 @@ Function Remove_Xbox {
             $Task.Task.Settings.Enabled = "false"
         }
     }
-    Write-Host ""
-    Write-Host "Xbox App and components removed." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nXbox App and components removed." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Bloatware_Teams {
-    Write-Host ""
-    Write-Host "--Microsoft Teams Chat--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--Microsoft Teams Chat--" -ForegroundColor White -BackgroundColor DarkCyan
 
     $title    = "Remove Teams App?"
     $choices  = "&Yes", "&No"
@@ -474,6 +478,7 @@ Function Bloatware_Teams {
     $TeamsAppx = @(
         "Microsoft.Messaging"
         "MicrosoftTeams"
+        "MSTeams"
 		"microsoft.windowscommunicationsapps"
         )
 
@@ -493,14 +498,12 @@ Function Bloatware_Teams {
             $Script:Remove_Teams = $true
         }
     } else {
-        Write-Host ""
-        Write-Host "It seems the Teams Chat features are already removed." -ForegroundColor White -BackgroundColor DarkCyan
+        Write-Host "`nIt seems the Teams Chat features are already removed." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
 Function Remove_Teams {
-    Write-Host ""
-    Write-Host "Removing non-M365 Microsoft Teams/Chat..."  -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "`nRemoving non-M365 Microsoft Teams/Chat..."  -ForegroundColor White -BackgroundColor DarkGreen
 
     Write-Host "Setting Registry settings to block Teams/Chat from reappearing..." -ForegroundColor White -BackgroundColor DarkBlue
 	if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Chat")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Chat" -force -ea SilentlyContinue};
@@ -509,7 +512,6 @@ Function Remove_Teams {
     if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {  New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue };
     New-ItemProperty -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarMn" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
 
-    
     if (Test-path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Communications") {
         if ($Target -eq "Online") {
             Take-Ownership -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Communications" -User "BUILTIN\Administrators" -Verbose
@@ -518,13 +520,11 @@ Function Remove_Teams {
         New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Communications" -Name "ConfigureChatAutoInstall" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
     }
 
-    Write-Host ""
-    Write-Host "Teams/Chat removed." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nTeams/Chat removed." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Bloatware_Cortana {
-    Write-Host ""
-    Write-Host "--Windows Cortana and Online Start Menu Search--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--Windows Cortana and Online Start Menu Search--" -ForegroundColor White -BackgroundColor DarkCyan
     
     $title    = "Remove Cortana?"
     $choices  = "&Yes", "&No"
@@ -539,8 +539,7 @@ Function Bloatware_Cortana {
 }
 
 Function Remove_Cortana {
-    Write-Host ""
-	Write-Host "Disabling Cortana and Online Start Menu Search..." -ForegroundColor White -BackgroundColor DarkGreen	
+	Write-Host "`nDisabling Cortana and Online Start Menu Search..." -ForegroundColor White -BackgroundColor DarkGreen	
 
     Write-Host "Disabling Bing Search and Cortana in Start Menu..." -ForegroundColor White -BackgroundColor DarkBlue
     If (!(Test-Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search")) {New-Item -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" -Force | Out-Null}
@@ -580,26 +579,24 @@ Function Remove_Cortana {
     New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\Explorer" -Name "DisableSearchBoxSuggestions" -Value 1 -PropertyType Dword -Force
 
 
-    Write-Host ""
-    Write-Host "Cortana disabled." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nCortana disabled." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Bloatware_Services {
-    Write-Host ""
-    Write-Host "--Windows Services--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--Windows Services--" -ForegroundColor White -BackgroundColor DarkCyan
     
     $title    = "Disable Service?"
     $choices  = "&Yes", "&No"
 
     $Services = @(
-        @{Item="WSearch";Desc="Windows Search"},
+        @{Item="WSearch";Desc="Windows Search. Needed to find files in the Start Menu and File Explorer. Disable only if you have a search alternative."},
         @{Item="icssvc";Desc="Mobile Hotspot"},
-        @{Item="MixedRealityOpenXRSvc";Desc="Mixed Reality"},
+        @{Item="MixedRealityOpenXRSvc";Desc="Deprecated Mixed Reality VR system."},
         @{Item="WMPNetworkSvc";Desc="Windows Media Player Sharing"},
         @{Item="wisvc";Desc="Insider Program"},
         @{Item="WerSvc";Desc="Error Reporting"},
         @{Item="WalletService";Desc="Wallet Service"},
-        @{Item="SysMain";Desc="SuperFetch - Safe to disable if you have a SSD"},
+        @{Item="SysMain";Desc="SuperFetch - Safe to disable if you only use SSD/M.2 Disks. No HDD drives."},
         @{Item="svsvc";Desc="Spot Verifier"},
         @{Item="SCPolicySvc";Desc="Smart Card Removal Policy"},
         @{Item="ScDeviceEnum";Desc="Smart Card Device Enumeration Service"},
@@ -638,8 +635,7 @@ Function Bloatware_Services {
         @{Item="DusmSvc";Desc="Keeps track of Data Usage"}
     ) | % { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 
-    Write-Host ""
-    Write-Host "Please select the following Windows Services you want to disable.`nIf in doubt just answer No." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nPlease select the following Windows Services you want to disable.`nIf in doubt just answer No." -ForegroundColor White -BackgroundColor DarkCyan
 
     foreach ($Bloat in $Services) {
         if ($Target -eq "Online") {
@@ -666,8 +662,7 @@ Function Bloatware_Services {
 }
 
 Function Remove_Services {
-    Write-Host ""
-    Write-Host "Disabling unwanted services..." -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "`nDisabling unwanted services..." -ForegroundColor White -BackgroundColor DarkGreen
 
     foreach ($Bloat in $Services_RemovalList) {
         if ($Target -eq "Online") {
@@ -681,15 +676,31 @@ Function Remove_Services {
             if (Test-Path $registryPath) {New-ItemProperty $registryPath Start -Value 4 -PropertyType Dword -Force}
         }
     }
-    Write-Host ""
-    Write-Host "Unwanted Services disabled." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nUnwanted Services disabled." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Debloat_BlockBloatware {
 
+    $choices  = "&Yes", "&No"
+    #Disable Windows Recall
+    $title    = "Disable Windows Recall?"
+    $question = "Disable Windows Recall? This is a massive potential data leak as malware can easily steal information about everything you do on your computer."
+    $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
+    if ($decision -eq 0) {
+        Write-Host "`nDisabling Windows Recall"
+        
+        if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\WindowsAI")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\WindowsAI" -Force -ErrorAction SilentlyContinue}
+        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\WindowsAI" -Name "DisableAIDataAnalysis" -PropertyType Dword -Value 1 -Force
+
+        if(!(Test-Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI")){ New-Item -Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI" -Force -ErrorAction SilentlyContinue}
+        New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI" -Name "DisableAIDataAnalysis" -PropertyType Dword -Value 1 -Force
+        
+        
+    	Get-WindowsOptionalFeature -Online | Where-Object {'State' -notin @('Disabled';'DisabledWithPayloadRemoved') -and ($_.Name -like "Recall")} | Disable-WindowsOptionalFeature -Online -Remove -NoRestart -ErrorAction 'Continue'
+    }
+    
     #Prevents bloatware applications from returning and removes Start Menu suggestions
-    Write-Host ""
-    Write-Host "Adding Registry key to prevent bloatware apps from returning..." -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "`nAdding Registry key to prevent bloatware apps from returning..." -ForegroundColor White -BackgroundColor DarkGreen
 
     $registryPath = "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\CloudContent"
     $registryCurrentUser = "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
@@ -699,56 +710,48 @@ Function Debloat_BlockBloatware {
    }
     New-ItemProperty $registryPath DisableWindowsConsumerFeatures -Value 1 -PropertyType Dword -Force
 
+    $ContentFeatures = @(
+    'ContentDeliveryAllowed';
+	'FeatureManagementEnabled';
+	'OEMPreInstalledAppsEnabled';
+	'PreInstalledAppsEnabled';
+	'PreInstalledAppsEverEnabled';
+	'SilentInstalledAppsEnabled';
+	'SoftLandingEnabled';
+	'SubscribedContentEnabled';
+	'SubscribedContent-310093Enabled';
+	'SubscribedContent-338387Enabled';
+	'SubscribedContent-338388Enabled';
+	'SubscribedContent-338389Enabled';
+	'SubscribedContent-338393Enabled';
+	'SubscribedContent-353698Enabled';
+    'SubscribedContent-353696Enabled';
+    'SubscribedContent-353694Enabled';
+	'SystemPaneSuggestionsEnabled';
+   )
+
     If (!(Test-Path $registryCurrentUser)) {
     New-Item $registryCurrentUser
-   }
-    New-ItemProperty $registryCurrentUser  ContentDeliveryAllowed -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryCurrentUser  OemPreInstalledAppsEnabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryCurrentUser  PreInstalledAppsEnabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryCurrentUser  PreInstalledAppsEverEnabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryCurrentUser  SilentInstalledAppsEnabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryCurrentUser  SystemPaneSuggestionsEnabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryCurrentUser  SoftLandingEnabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryCurrentUser  RotatingLockScreenOverlayEnabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryCurrentUser  DisableTailoredExperiencesWithDiagnosticData -Value 1 -PropertyType Dword -Force
-	New-ItemProperty $registryCurrentUser  SubscribedContent-310093Enabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryCurrentUser  SubscribedContent-338387Enabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryCurrentUser  SubscribedContent-338388Enabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryCurrentUser  SubscribedContent-338389Enabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryCurrentUser  SubscribedContent-353698Enabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryCurrentUser  SubscribedContent-353696Enabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryCurrentUser  SubscribedContent-338393Enabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryCurrentUser  SubscribedContent-353694Enabled -Value 0 -PropertyType Dword -Force
-	
-	If (!(Test-Path $registryDefaultUsers)) {
-    New-Item $registryDefaultUsers
-   }
-    New-ItemProperty $registryDefaultUsers  ContentDeliveryAllowed -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryDefaultUsers  OemPreInstalledAppsEnabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryDefaultUsers  PreInstalledAppsEnabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryDefaultUsers  PreInstalledAppsEverEnabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryDefaultUsers  SilentInstalledAppsEnabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryDefaultUsers  SystemPaneSuggestionsEnabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryDefaultUsers  SoftLandingEnabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryDefaultUsers  RotatingLockScreenOverlayEnabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryDefaultUsers  DisableTailoredExperiencesWithDiagnosticData -Value 1 -PropertyType Dword -Force
-	New-ItemProperty $registryDefaultUsers  SubscribedContent-310093Enabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryDefaultUsers  SubscribedContent-338387Enabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryDefaultUsers  SubscribedContent-338388Enabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryDefaultUsers  SubscribedContent-338389Enabled -Value 0 -PropertyType Dword -Force
-	New-ItemProperty $registryDefaultUsers  SubscribedContent-353698Enabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryDefaultUsers  SubscribedContent-353696Enabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryCurrentUser  SubscribedContent-338393Enabled -Value 0 -PropertyType Dword -Force
-    New-ItemProperty $registryCurrentUser  SubscribedContent-353694Enabled -Value 0 -PropertyType Dword -Force
+    }
+    foreach ($ContentFeature in $ContentFeatures) {
+    New-ItemProperty $registryCurrentUser $ContentFeature -Value 0 -PropertyType Dword -Force
+    }
+    New-ItemProperty $registryCurrentUser  DisableTailoredExperiencesWithDiagnosticData -Value 1 -PropertyType Dword -Force
 
-    Write-Host ""
-    Write-Host "Bloatware blocked from reinstalling." -ForegroundColor White -BackgroundColor DarkCyan
+    If (!(Test-Path $registryDefaultUsers)) {
+    New-Item $registryDefaultUsers
+    }
+    foreach ($ContentFeature in $ContentFeatures) {
+    New-ItemProperty $registryDefaultUsers $ContentFeature -Value 0 -PropertyType Dword -Force
+    }
+    New-ItemProperty $registryDefaultUsers  DisableTailoredExperiencesWithDiagnosticData -Value 1 -PropertyType Dword -Force
+
+    Write-Host "`nBloatware blocked from reinstalling." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Remove_BloatwareReg {
 
-    Write-Host ""
-    Write-Host "Removing specific bloatware registry keys..." -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "`nRemoving specific bloatware registry keys..." -ForegroundColor White -BackgroundColor DarkGreen
     #These are the registry keys that it will delete.
 
     $Keys = @(
@@ -784,15 +787,13 @@ Function Remove_BloatwareReg {
             Remove-Item $Key -Recurse
         }
     }
-    Write-Host ""
-    Write-Host "Leftover bloatware registry keys removed." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nLeftover bloatware registry keys removed." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Debloat_BlockAds {
 
     #Disable ads throughout the system
-    Write-Host ""
-    Write-Host "Disabling several different ads throughout the system..." -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "`nDisabling several different ads throughout the system..." -ForegroundColor White -BackgroundColor DarkGreen
 
     if(!(Test-Path -LiteralPath "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {New-Item "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue};
     New-ItemProperty -LiteralPath "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowSyncProviderNotifications" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
@@ -800,23 +801,19 @@ Function Debloat_BlockAds {
 	if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {New-Item "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue};
     New-ItemProperty -LiteralPath "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowSyncProviderNotifications" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
 
-    Write-Host ""
-    Write-Host "Ads blocked." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nAds blocked." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Remove_Telemetry {
-    Write-Host ""
-    Write-Host "--Windows Telemetry and Privacy--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--Windows Telemetry and Privacy--" -ForegroundColor White -BackgroundColor DarkCyan
 
     $choices  = "&Yes", "&No"
     
-    Write-Host ""
-    Write-Host "This section will Block/Disable Windows Telemetry and Advertising.`nYou will be prompted on a few sections if you want to block them or leave them alone." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nThis section will Block/Disable Windows Telemetry and Advertising.`nYou will be prompted on a few sections if you want to block them or leave them alone." -ForegroundColor White -BackgroundColor DarkCyan
     Pause
 
     #Disables Windows Advertising ID
-    Write-Host ""
-    Write-Host "Disabling Advertising ID" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nDisabling Advertising ID" -ForegroundColor White -BackgroundColor DarkBlue
 	if(!(Test-Path "Reg_HKCU:\SOFTWARE\Microsoft\Input\TIPC")){ New-Item -Path "Reg_HKCU:\SOFTWARE\Microsoft\Input\TIPC" -Force -ErrorAction SilentlyContinue}
 	New-ItemProperty -Path "Reg_HKCU:\SOFTWARE\Microsoft\Input\TIPC" -Name "Enabled" -Value 0 -PropertyType Dword -Force
 
@@ -827,8 +824,7 @@ Function Remove_Telemetry {
 	New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name "Enabled" -Value 0 -PropertyType Dword -Force
 
     #Disable advertisments via Bluetooth
-    Write-Host ""
-    Write-Host "Disabling Advertising via Bluetooth" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nDisabling Advertising via Bluetooth" -ForegroundColor White -BackgroundColor DarkBlue
     if(!(Test-Path "Reg_HKLM_SOFTWARE:\Microsoft\PolicyManager\current\device\Bluetooth")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Microsoft\PolicyManager\current\device\Bluetooth" -Force -ErrorAction SilentlyContinue}
 	New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\PolicyManager\current\device\Bluetooth" -Name "AllowAdvertising" -Value 0 -PropertyType Dword -Force
 
@@ -850,14 +846,12 @@ Function Remove_Telemetry {
     New-ItemProperty -Path "Reg_HKDefaultUser:\SOFTWARE\Microsoft\InputPersonalization\TrainedDataStore" -Name "HarvestContacts" -Value 0 -PropertyType DWord -Force
 
     #Block sending typing information to Microsoft
-    Write-Host ""
-    Write-Host "Setting No-Advertizing Info Policy" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nSetting No-Advertizing Info Policy" -ForegroundColor White -BackgroundColor DarkBlue
     if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\AdvertisingInfo")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\AdvertisingInfo" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\AdvertisingInfo" -Name "DisabledByGroupPolicy" -Value 1 -PropertyType Dword -Force
 
     #Stops the Windows Feedback Experience from sending anonymous data
-    Write-Host ""
-    Write-Host "Stopping the Windows Feedback Experience program" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nStopping the Windows Feedback Experience program" -ForegroundColor White -BackgroundColor DarkBlue
     if(!(Test-Path "Reg_HKCU:\Software\Microsoft\Siuf\Rules")){ New-Item -Path "Reg_HKCU:\Software\Microsoft\Siuf\Rules" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Siuf\Rules" PeriodInNanoSeconds -Value 0 -PropertyType Dword -Force
     New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Siuf\Rules" NumberOfSIUFInPeriod -Value 0 -PropertyType Dword -Force
@@ -872,8 +866,7 @@ Function Remove_Telemetry {
     $question = "Do you want to make Widnows Mixed Reality Portal removeable?`nIf you want to uninstall it you can find it in Settings->Apps to uninstall afterwards."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-        Write-Host ""
-        Write-Host "Setting Mixed Reality Portal value to 0 so that you can uninstall it in Settings" -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "`nSetting Mixed Reality Portal value to 0 so that you can uninstall it in Settings" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic")){ New-Item -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic" -Force -ErrorAction SilentlyContinue}
         New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic" FirstRunSucceeded -Value 0 -PropertyType Dword -Force
 
@@ -882,8 +875,7 @@ Function Remove_Telemetry {
     }
 
     #Disables Wi-fi Sense
-    Write-Host ""
-    Write-Host "Disabling Wi-Fi Sense" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nDisabling Wi-Fi Sense" -ForegroundColor White -BackgroundColor DarkBlue
     $WifiSense1 = "Reg_HKLM_SOFTWARE:\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting"
     $WifiSense2 = "Reg_HKLM_SOFTWARE:\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots"
     $WifiSense3 = "Reg_HKLM_SOFTWARE:\Microsoft\WcmSvc\wifinetworkmanager\config"
@@ -899,8 +891,7 @@ Function Remove_Telemetry {
 
 
     #Disables live tiles
-    Write-Host ""
-    Write-Host "Disabling live tiles" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nDisabling live tiles" -ForegroundColor White -BackgroundColor DarkBlue
     if(!(Test-Path "Reg_HKCU:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications")){ New-Item -Path "Reg_HKCU:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKCU:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications" NoTileApplicationNotification -Value 1 -PropertyType Dword -Force
 
@@ -908,8 +899,7 @@ Function Remove_Telemetry {
     New-ItemProperty -Path "Reg_HKDefaultUser:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications" NoTileApplicationNotification -Value 1 -PropertyType Dword -Force
 
     #Turns off Data Collection via the AllowTelemtry key by changing it to 0
-    Write-Host ""
-    Write-Host "Turning off Data Collection" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nTurning off Data Collection" -ForegroundColor White -BackgroundColor DarkBlue
 
     if(!(Test-Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\DataCollection")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\DataCollection" AllowTelemetry -Value 0 -PropertyType Dword -Force
@@ -926,8 +916,7 @@ Function Remove_Telemetry {
 	
 
     #Disables People icon on Taskbar
-    Write-Host ""
-    Write-Host "Disabling People icon on Taskbar" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nDisabling People icon on Taskbar" -ForegroundColor White -BackgroundColor DarkBlue
 
     if(!(Test-Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People")){ New-Item -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People" PeopleBand -Value 0 -PropertyType Dword -Force
@@ -936,8 +925,7 @@ Function Remove_Telemetry {
     New-ItemProperty -Path "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People" PeopleBand -Value 0 -PropertyType Dword -Force
 
    #Restrict Windows Update P2P only to local network
-    Write-Host ""
-    Write-Host "Restricting Windows Update P2P only to local network..." -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nRestricting Windows Update P2P only to local network..." -ForegroundColor White -BackgroundColor DarkBlue
     if(!(Test-Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config" -Name "DODownloadMode" -Value 0 -PropertyType Dword -Force
 
@@ -955,8 +943,7 @@ Function Remove_Telemetry {
     $question = "Disable Web Search aka Bing in the Start Menu?`nDisabling Web Search will significantly speed up the Start Menu and stop countless unwanted web searches when trying to open programs."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-        Write-Host ""
-        Write-Host "Disable Online Windows Search" -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "`nDisable Online Windows Search" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -force -ea SilentlyContinue}
         New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue
         New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "EnableDynamicContentInWSB" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue
@@ -971,14 +958,12 @@ Function Remove_Telemetry {
     }
 
     #Disable Hand Writing Error Reports
-    Write-Host ""
-    Write-Host "Disabling Handwriting Error Reports" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nDisabling Handwriting Error Reports" -ForegroundColor White -BackgroundColor DarkBlue
     if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\HandwritingErrorReports")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\HandwritingErrorReports" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\HandwritingErrorReports" -Name "PreventHandwritingErrorReports" -PropertyType Dword -Value 1 -Force
 
     #Disable sharing of Handwriting Data
-    Write-Host ""
-    Write-Host "Disabling Sharing of Handwriting Data" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nDisabling Sharing of Handwriting Data" -ForegroundColor White -BackgroundColor DarkBlue
     if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\TabletPC")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\TabletPC" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\TabletPC" -Name "PreventHandwritingDataSharing" -PropertyType Dword -Value 1 -Force
 	
@@ -987,8 +972,7 @@ Function Remove_Telemetry {
     $question = "Disable Windows Maps from automatically downloading maps? Unless you use this feature it's best to answer yes."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-        Write-Host ""
-        Write-Host "Disabling Auto Map Downloading/UpDating" -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "`nDisabling Auto Map Downloading/UpDating" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Maps")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Maps" -Force -ErrorAction SilentlyContinue}
         New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Maps" -Name "AutoDownloadAndUpdateMapData" -PropertyType Dword -Value 0 -Force
     }
@@ -1051,8 +1035,7 @@ Function Remove_Telemetry {
     $question = "Would you like to disable apps from having access to your user account information?`nApps have access to your account name, picture, and other account info. If you answer yes this will disable access for all apps.`nYou can find this setting in the Settings App under Privacy and look under Account Info."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-        Write-Host ""
-        Write-Host "Disabling Auto Map Downloading/Updating" -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "`nDisabling Auto Map Downloading/Updating" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\userAccountInformation")){ New-Item -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\userAccountInformation" -Force -ErrorAction SilentlyContinue}
         New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\userAccountInformation" -Name "Value" -PropertyType String -Value "Deny" -Force
 
@@ -1069,8 +1052,7 @@ Function Remove_Telemetry {
     $question = "Would you like to disable apps from having access to Diagnostic Information?`nApps have access to diagnostic information which can sometimes be an invasion of privacy. If you answer yes this will disable access for all apps.`nYou can find this setting in the Settings App under Privacy and look under App diagnostics."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-        Write-Host ""
-        Write-Host "Disabling Apps having access to Diagnostic Information" -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "`nDisabling Apps having access to Diagnostic Information" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\appDiagnostics")){ New-Item -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\appDiagnostics" -Force -ErrorAction SilentlyContinue}
         New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\appDiagnostics" -Name "Value" -PropertyType String -Value "Deny" -Force
 
@@ -1083,8 +1065,7 @@ Function Remove_Telemetry {
     }
 
     #Disable use of diagnostic data for tailor-made user experience
-    Write-Host ""
-    Write-Host "Disabling use of diagnostic data for tailor-made user experience (aka ads and suggestions)" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nDisabling use of diagnostic data for tailor-made user experience (aka ads and suggestions)" -ForegroundColor White -BackgroundColor DarkBlue
     if(!(Test-Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy")){ New-Item -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" -Name "TailoredExperiencesWithDiagnosticDataEnabled" -PropertyType Dword -Value 0 -Force
 
@@ -1096,8 +1077,7 @@ Function Remove_Telemetry {
     $question = "Windows has a feature to back up all text messages to the cloud which can be an invasion to privacy.`nDo you want to block text message cloud backup?"
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-        Write-Host ""
-        Write-Host "Disabling Text Message Backup" -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "`nDisabling Text Message Backup" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Messaging")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Messaging" -Force -ErrorAction SilentlyContinue}
 	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Messaging" -Name "AllowMessageSync" -Value 0 -PropertyType Dword -Force
     }
@@ -1107,17 +1087,14 @@ Function Remove_Telemetry {
     $question = "Windows Error Reporting sends application error information to Windows to help diagnose issues.`nThis is a legitimate feature that is helpful for making computers run smoothly, but can give Microsoft details about applications you are using and what you are doing in them.`nDo you want to disable Error Reporting?`nSuggested: No"
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-        Write-Host ""
-        Write-Host "Disabling Windows Error Reporting" -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "`nDisabling Windows Error Reporting" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\Windows Error Reporting")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\Windows Error Reporting" -Force -ErrorAction SilentlyContinue}
 	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\Windows Error Reporting" -Name "Disabled" -Value 1 -PropertyType Dword -Force
     }
-    Write-Host ""
-    Write-Host "Telemetry blocked." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nTelemetry blocked." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Remove_Edge {
-    Write-Host ""
     Write-Host "--Microsoft Edge--" -ForegroundColor White -BackgroundColor DarkCyan
 
     $title    = "Disable Microsoft Edge App?"
@@ -1128,7 +1105,7 @@ Function Remove_Edge {
     if ($decision -eq 0) {
         if ($Target -eq "Online") {
             Get-Process -Name "*Edge*" | Stop-Process -Force
-            taskkill /f /im msedge.exe 2>$Null | Out-Null
+            taskkill /f /im msedge.exe | Out-Null
         }
         if (Test-Path "$MountDir`Program Files (x86)\Microsoft\Edge"){
             takeown /f "$MountDir`Program Files (x86)\Microsoft\Edge"
@@ -1140,22 +1117,20 @@ Function Remove_Edge {
             icacls "$MountDir`Program Files (x86)\Microsoft\EdgeUpdate" /grant Administrators:F /T /C | Out-Null
             Rename-Item -Path "$MountDir`Program Files (x86)\Microsoft\EdgeUpdate" -NewName "EdgeUpdate_Disabled"
         }
-        if((Test-Path -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Microsoft Edge") -ne $true) {  New-Item "HKLM:\SOFTWARE\Policies\Microsoft\Microsoft Edge" -force -ea SilentlyContinue };
-        if((Test-Path -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Microsoft Edge\Main") -ne $true) {  New-Item "HKLM:\SOFTWARE\Policies\Microsoft\Microsoft Edge\Main" -force -ea SilentlyContinue };
-        if((Test-Path -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Microsoft Edge\TabPreloader") -ne $true) {  New-Item "HKLM:\SOFTWARE\Policies\Microsoft\Microsoft Edge\TabPreloader" -force -ea SilentlyContinue };
-        New-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Policies\Microsoft\Microsoft Edge\Main' -Name 'AllowPrelaunch' -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
-        New-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Policies\Microsoft\Microsoft Edge\TabPreloader' -Name 'AllowTabPreloading' -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+        if((Test-Path -LiteralPath "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge") -ne $true) {  New-Item "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge" -force -ea SilentlyContinue };
+        if((Test-Path -LiteralPath "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\Main") -ne $true) {  New-Item "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\Main" -force -ea SilentlyContinue };
+        if((Test-Path -LiteralPath "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\TabPreloader") -ne $true) {  New-Item "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\TabPreloader" -force -ea SilentlyContinue };
+        New-ItemProperty -LiteralPath 'Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\Main' -Name 'AllowPrelaunch' -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+        New-ItemProperty -LiteralPath 'Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\TabPreloader' -Name 'AllowTabPreloading' -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
         
         $Script:Disable_EdgePDF = $true
-        Write-Host ""
-        Write-Host "Microsoft Edge Browser disabled." -ForegroundColor White -BackgroundColor DarkCyan
+        Write-Host "`nMicrosoft Edge Browser disabled." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
 Function Stop_EdgePDF {
     #Stops edge from taking over as the default .PDF viewer
-    Write-Host ""
-    Write-Host "--Microsoft Edge PDF Handler--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--Microsoft Edge PDF Handler--" -ForegroundColor White -BackgroundColor DarkCyan
 
     if ($Script:Disable_EdgePDF -ne $true) {
         $title    = "Disable Edge handling PDFs?"
@@ -1165,8 +1140,7 @@ Function Stop_EdgePDF {
     }
 
     if (($decision -eq 0) -or ($Script:Disable_EdgePDF -eq $true)) {
-        Write-Host ""
-        Write-Host "Stopping Edge from taking over as the default .PDF viewer..." -ForegroundColor White -BackgroundColor DarkGreen
+        Write-Host "`nStopping Edge from taking over as the default .PDF viewer..." -ForegroundColor White -BackgroundColor DarkGreen
         $NoPDF = "Reg_HKCR:\.pdf"
         $NoProgids = "Reg_HKCR:\.pdf\OpenWithProgids"
         $NoWithList = "Reg_HKCR:\.pdf\OpenWithList"
@@ -1187,27 +1161,56 @@ Function Stop_EdgePDF {
         If (!(Test-Path $EdgePDF)) {New-Item $EdgePDF}
         New-ItemProperty -Path $EdgePDF -Name AlwaysOpenPdfExternally -Value 1 -PropertyType Dword -Force
 
-        Write-Host ""
-        Write-Host "Edge blocked from taking over .PDF files." -ForegroundColor White -BackgroundColor DarkCyan
+        Write-Host "`nEdge blocked from taking over .PDF files." -ForegroundColor White -BackgroundColor DarkCyan
+    }
+}
+
+Function Restore_EdgePDF {
+    #Stops edge from taking over as the default .PDF viewer
+    Write-Host "`n--Microsoft Edge PDF Handler--"
+    if ($Script:Disable_EdgePDF -ne $true) {
+        $title    = "Restore Edge for handling PDFs? (To undo previous blocking PDFs)"
+        $choices  = "&Yes", "&No"
+        $question = "Would you like to once again allow Edge to open PDF files by default?"
+        $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
+    }
+
+    if (($decision -eq 0) -and ($Script:Disable_EdgePDF -eq $false)) {
+        Write-Host "`nRestoring Edge as a .PDF viewer..."
+        $NoPDF = "Reg_HKCR:\.pdf"
+        $NoProgids = "Reg_HKCR:\.pdf\OpenWithProgids"
+        $NoWithList = "Reg_HKCR:\.pdf\OpenWithList"
+        If ((Get-ItemProperty $NoPDF NoOpenWith -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoPDF NoOpenWith}
+        If ((Get-ItemProperty $NoPDF NoStaticDefaultVerb -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoPDF NoStaticDefaultVerb}
+        If ((Get-ItemProperty $NoProgids NoOpenWith -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoProgids NoOpenWith}
+        If ((Get-ItemProperty $NoProgids NoStaticDefaultVerb -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoProgids NoStaticDefaultVerb}
+        If ((Get-ItemProperty $NoWithList NoOpenWith -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoWithList NoOpenWith}
+        If ((Get-ItemProperty $NoWithList NoStaticDefaultVerb -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoWithList NoStaticDefaultVerb}
+
+        #Appends an underscore '_' to the Registry key for Edge
+        #$Edge = "Reg_HKCR:\AppXd4nrz8ff68srnhf9t5a8sbjyar1cr723_"
+        #If (Test-Path $Edge) {Set-Item $Edge AppXd4nrz8ff68srnhf9t5a8sbjyar1cr723_}
+        $EdgePDF = "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge"
+        If ((Get-ItemProperty $EdgePDF AlwaysOpenPdfExternally -ErrorAction SilentlyContinue)) {Remove-ItemProperty -Path $EdgePDF -Name AlwaysOpenPdfExternally}
+
+        Write-Host "`nEdge restored to open .PDF files."
     }
 }
 
 Function Remove_OneDrive {
-    Write-Host ""
-    Write-Host "--Microsoft OneDrive--" -ForegroundColor White -BackgroundColor DarkCyan
+
+    Write-Host "`n--Microsoft OneDrive--" -ForegroundColor White -BackgroundColor DarkCyan
 
     $title    = "Remove Microsoft OneDrive?"
     $choices  = "&Yes", "&No"
     Write-Host ""
     $question = "Would you like to remove OneDrive?"
-    $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
+    $decision = 1 #$Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-        Write-Host ""
-        Write-Host "Attempting to uninstall OneDrive..." -ForegroundColor White -BackgroundColor DarkGreen
-        Write-Host "Please note: This may take a long time if you enabled Known Folder Redirection aka Backup With OneDrive. Please be patient." -ForegroundColor Yellow -BackgroundColor Black
+        Write-Host "`nAttempting to uninstall OneDrive..."
         if ($Target -eq "Online"){
-            Get-Process -Name "*OneDrive*" | Stop-Process -Force | Out-Null
-            taskkill /f /im OneDrive.exe 2>$Null | Out-Null
+            Get-Process -Name "*OneDrive*" | Stop-Process -Force
+            taskkill /f /im OneDrive.exe | Out-Null
         }
         if (Test-Path "$MountDir`Windows\System32\OneDriveSetup.exe") {
             if ($Target -eq "Online"){
@@ -1227,15 +1230,12 @@ Function Remove_OneDrive {
             icacls $MountDir`Windows\SysWOW64\OneDriveSetup.exe /grant Administrators:F /C
             Rename-Item -Path "$MountDir`Windows\SysWOW64\OneDriveSetup.exe" -NewName "OneDriveSetup_Disabled.exe"
         }
-        Write-Host ""
-        Write-Host "Microsoft OneDrive Removed." -ForegroundColor White -BackgroundColor DarkCyan
+        Write-Host "`nMicrosoft OneDrive Removed."
     }
-
 }
 
 Function Clean_StartMenu {
-    Write-Host ""
-    Write-Host "--Start Menu--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--Start Menu--" -ForegroundColor White -BackgroundColor DarkCyan
 
     $title    = "Clean the Start Menu?"
     $choices  = "&Yes", "&No"
@@ -1243,8 +1243,7 @@ Function Clean_StartMenu {
     $question = "Would you like to clean the Start Menu?`nThis will only affect new users logging into the computer or if you were to clear your local profile or Start Menu data."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-        Write-Host ""
-        Write-Host "Cleaning Start Menu for new users..." -ForegroundColor White -BackgroundColor DarkGreen
+        Write-Host "`nCleaning Start Menu for new users..." -ForegroundColor White -BackgroundColor DarkGreen
 	    
         if ($WinVer -eq 10) {
             $startlayout=@"
@@ -1267,9 +1266,14 @@ Function Clean_StartMenu {
 </LayoutModificationTemplate>
 "@
 	        $startlayout | Out-File $ENV:TEMP\StartLayout.xml
-            Import-StartLayout -LayoutPath $ENV:TEMP\StartLayout.xml -MountPath $MountDir -Verbose
+            try {
+                Import-StartLayout -LayoutPath $ENV:TEMP\StartLayout.xml -MountPath $MountDir -Verbose -ErrorAction Stop
+            } catch {
+                Write-Host "Failed to Import a clean Start Menu Layout. Error: $_"
+                Write-Error "Failed to Import a clean Start Menu Layout. Error: $_"
+            }
 	        Start-Sleep 1
-	        Remove-Item $ENV:TEMP\StartLayout.xml -force
+	        Remove-Item $ENV:TEMP\StartLayout.xml -Force -ErrorAction Continue
         }
 	
 	    if ($WinVer -eq 11) {
@@ -1283,19 +1287,51 @@ Function Clean_StartMenu {
             New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Microsoft\PolicyManager\current\device\Start" -Name "ConfigureStartPins" -Value $W11StartLayout -PropertyType String -Force
             #New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Microsoft\PolicyManager\current\device\Start" -Name "ConfigureStartPins_ProviderSet" -Value 1 -PropertyType DWord -Force
         }
-        Write-Host ""
-        Write-Host "Start menu cleaned for new users." -ForegroundColor White -BackgroundColor DarkCyan
+        Write-Host "`nStart menu cleaned for new users." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
 Function System_Tweaks {
-    Write-Host ""
-    Write-Host "--Windows Tweaks--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--Windows Tweaks--" -ForegroundColor White -BackgroundColor DarkCyan
 
-    Write-Host ""
-    Write-Host "In this section you will be offered a lot of Windows tweak options.`nSome options may do the opposite of previous options.`nThese are preferences more than debloat features." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nIn this section you will be offered a lot of Windows tweak options.`nSome options may do the opposite of previous options.`nThese are preferences more than debloat features." -ForegroundColor White -BackgroundColor DarkCyan
     Pause
+
     $choices  = "&Yes", "&No"
+    
+    #Harden C:\ to stop non-administrators modifying the root C: Drive
+    $title    = "Harden C: Drive Root Security?"
+    $question = "Answering yes makes the root of C:\ modifiable only by administrators."
+    $decision = 0 #$Host.UI.PromptForChoice($title, $question, $choices, 1)
+    if ($decision -eq 0) {
+        Write-Host "`nHardening C: Drive Root"
+        icacls.exe C:\ /remove:g "*S-1-5-11"
+    }
+    
+    #Block Edge First Run Experience
+    $title    = "Disable Edge First Run Experience?"
+    $question = "Answering yes stops Edge from asking you about setting up your Edge preferences on first launch."
+    $decision = 0 #$Host.UI.PromptForChoice($title, $question, $choices, 1)
+    if ($decision -eq 0) {
+        Write-Host "`nDisabling the storing of user activity history"
+        if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge" -Force -ErrorAction SilentlyContinue}
+	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge" -Name "HideFirstRunExperience" -Value 1 -PropertyType Dword -Force
+    }
+
+    #W11 Align taskbar
+    if ($WinVer -eq 11) {
+        $title    = "Align Taskbar to the left?"
+        $question = "Change Windows 11 Start Menu to be on the left instead of center?"
+        $decision = 0 #$Host.UI.PromptForChoice($title, $question, $choices, 1)
+        if ($decision -eq 0) {
+            Write-Host "Start Menu set to the left side (If Windows 11)"
+            if(!(Test-Path -LiteralPath "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {  New-Item "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue };
+            New-ItemProperty -LiteralPath "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+
+            if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {  New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue };
+            New-ItemProperty -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+        }
+    }
 
     #W11 Show More Pins
     if ($WinVer -eq 11) {
@@ -1348,13 +1384,11 @@ Function System_Tweaks {
     $question = "Windows stores User Activity History as part of the Pickup Where You Left Off feature from Cortana.`nThis sends your activities including what applications you've been using recently among other factors.`nIf you have already disabled Cortana you may as well disable this as well."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-        Write-Host ""
-        Write-Host "Disabling the storing of user activity history" -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "`nDisabling the storing of user activity history" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System" -Force -ErrorAction SilentlyContinue}
 	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System" -Name "PublishUserActivities" -Value 0 -PropertyType Dword -Force
 	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System" -Name "UploadUserActivities" -Value 0 -PropertyType Dword -Force
     }
-    
     
     #Search Bar to Icon
     $title    = "Search Bar to Icon"
@@ -1378,6 +1412,42 @@ Function System_Tweaks {
             Write-Host "Disabling Windows News and Interests" -ForegroundColor White -BackgroundColor DarkBlue
 	        if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds" -force -ea SilentlyContinue};
 	        New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+        }
+    }
+
+	#Disable News and Interests aka Widgets Win 11
+    if ($WinVer -eq 11) {
+        $title    = "Hide Windows 11 Widgets?"
+        $question = "Hide the annoying Windows 11 Widgets that show ads, weather, and other annoyances that also slow down workstations."
+        $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
+        if ($decision -eq 0) {
+            Write-Host "Disabling Windows News and Interests aka Widgets"
+	        if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -force -ea SilentlyContinue};
+	        New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+        }
+    }
+
+	#Disable Recommended Section in Start Menu
+    if ($WinVer -eq 11) {
+        $title    = "Disable Recommended Section in Start Menu?"
+        $question = "Remove the Reccomended section from the Start Menu that shows common files and apps"
+        $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
+        if ($decision -eq 0) {
+            Write-Host "Disabling Recommended Apps in Start Menu"
+	        if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -force -ea SilentlyContinue};
+	        New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -Name "HideRecommendedSection" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
+        }
+    }
+
+	#Disable Personalized Sites in Start Menu
+    if ($WinVer -eq 11) {
+        $title    = "Recommended Websites in Start Menu?"
+        $question = "Remove Recommended Websites from the Start Menu that shows recent and frequent websites?"
+        $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
+        if ($decision -eq 0) {
+            Write-Host "Disabling Recommended Sites in Start Menu"
+	        if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -force -ea SilentlyContinue};
+	        New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -Name "HideRecommendedPersonalizedSites" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
         }
     }
 
@@ -1432,6 +1502,18 @@ Function System_Tweaks {
         Write-Host "Disabling Meet Now" -ForegroundColor White -BackgroundColor DarkBlue
 	    if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\Explorer")) {New-Item "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\Explorer" -force -ea SilentlyContinue};
 	    New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "HideSCAMeetNow" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
+    }
+
+    #Disable Clipboard Suggestions Windows 11
+    $title    = "Disable Clipboard Suggested Actions (Windows 11)"
+    $question = "Would you like to disable the popup every time you use the clipboard where Windows suggests actions for the clipboard content?"
+    $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
+    if ($decision -eq 0) {
+        Write-Host "Disabling Clipboard Suggestions"
+	    if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard")) {  New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard" -force -ea SilentlyContinue };
+        New-ItemProperty -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard" -Name "Disabled" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
+        if(!(Test-Path -LiteralPath "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard")) {  New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard" -force -ea SilentlyContinue };
+        New-ItemProperty -LiteralPath "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard" -Name "Disabled" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
     }
 
 	#Disable Sticky keys prompt
@@ -1551,12 +1633,6 @@ Function System_Tweaks {
         if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue};
         New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "LaunchTo" -PropertyType DWord -Value 1 -Force
     }
-	
-	#Bypass NRO in OOBE aka prompts to create Microsoft Accounts
-    Write-Host "Bypassing NRO prompts in OOBE`nThis allows skipping the nag to set up a Microsoft Account." -ForegroundColor White -BackgroundColor DarkBlue
-    if(!(Test-Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\OOBE")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\OOBE" -Force -ErrorAction SilentlyContinue}
-    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\OOBE" -Name "BypassNRO" -PropertyType DWord -Value 1 -Force
-
     #Disable Fast Startup Windows 10/11
     $title    = "Disable Fast Boot"
     $question = "Windows has a feature called Fast Boot where when you select Shut Down from the start menu, the computer is actually going into a partial hibernation.`nThis usually only saves you a few seconds during startup but introduces a lot of problems where corrupted memory makes the computer act strangely.`nTurning off Fast Boot often resolves many problems.`nDisable Fast Boot?"
@@ -1598,25 +1674,34 @@ Function System_Tweaks {
     $question = "Would you like to disable Windows Spotlight on the logon screen?`nWindows Spotlight selects random images from around the world and displays random tips and search suggestions on the lock screen.`nThis means your lock screen is making Bing searches and downloading lockscreen wallpapers in the background."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-        Write-Host ""
-        Write-Host "Disabling Windows Spotlight" -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "`nDisabling Windows Spotlight" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager")){ New-Item -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Force -ErrorAction SilentlyContinue}
         New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "RotatingLockScreenEnabled" -PropertyType Dword -Value 0 -Force
         New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "RotatingLockScreenOverlayEnabled" -PropertyType Dword -Value 0 -Force
+        if(!(Test-Path "Reg_HKCU:\SOFTWARE\Policies\Microsoft\Windows\CloudContent")){ New-Item -Path "Reg_HKCU:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Force -ErrorAction SilentlyContinue}
+        New-ItemProperty -Path "Reg_HKCU:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name "DisableWindowsSpotlightFeatures" -PropertyType Dword -Value 1 -Force
+        New-ItemProperty -Path "Reg_HKCU:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name "DisableSpotlightCollectionOnDesktop" -PropertyType Dword -Value 1 -Force
+        New-ItemProperty -Path "Reg_HKCU:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name "DisableWindowsSpotlightOnSettings" -PropertyType Dword -Value 1 -Force
 
         if(!(Test-Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager")){ New-Item -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Force -ErrorAction SilentlyContinue}
         New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "RotatingLockScreenEnabled" -PropertyType Dword -Value 0 -Force
         New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "RotatingLockScreenOverlayEnabled" -PropertyType Dword -Value 0 -Force
+        if(!(Test-Path "Reg_HKDefaultUser:\SOFTWARE\Policies\Microsoft\Windows\CloudContent")){ New-Item -Path "Reg_HKDefaultUser:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Force -ErrorAction SilentlyContinue}
+        New-ItemProperty -Path "Reg_HKDefaultUser:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name "DisableWindowsSpotlightFeatures" -PropertyType Dword -Value 1 -Force
+        New-ItemProperty -Path "Reg_HKDefaultUser:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name "DisableSpotlightCollectionOnDesktop" -PropertyType Dword -Value 1 -Force
+        New-ItemProperty -Path "Reg_HKDefaultUser:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name "DisableWindowsSpotlightOnSettings" -PropertyType Dword -Value 1 -Force
     }
+    
+    #Bypass NRO in OOBE aka prompts to create Microsoft Accounts
+    Write-Host "Bypassing NRO prompts in OOBE`nThis allows skipping the nag to set up a Microsoft Account." -ForegroundColor White -BackgroundColor DarkBlue
+    if(!(Test-Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\OOBE")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\OOBE" -Force -ErrorAction SilentlyContinue}
+    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\OOBE" -Name "BypassNRO" -PropertyType DWord -Value 1 -Force
 
-    Write-Host ""
-    Write-Host "System Tweaks completed." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nSystem Tweaks completed." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
-
 Function CheckDMWService {
-    Write-Host ""
-    Write-Host "Re-enabling DMWAppushservice if it was disabled" -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "`nRe-enabling DMWAppushservice if it was disabled" -ForegroundColor White -BackgroundColor DarkGreen
 
     If (Get-Service -Name dmwappushservice | Where-Object {$_.StartType -eq "Disabled"}) {
         Set-Service -Name dmwappushservice -StartupType Automatic
@@ -1630,21 +1715,19 @@ Function CheckDMWService {
 Function Cleanup_Image {
 
     #Cleans up the Windows Component Store to reduce image size
-    Write-Host ""
-    Write-Host "Cleaning up Windows Image, please wait..." -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "`nCleaning up Windows Image, please wait..." -ForegroundColor White -BackgroundColor DarkGreen
     dism /Image:$Target /Cleanup-Image /StartComponentCleanup /ResetBase /ScratchDir:"$MountDir`\Scratch"
     Write-Host "Image cleanup complete." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Mount_Registry {
-    Write-Host ""
-    Write-Host "Mounting the registry..." -ForegroundColor Yellow
+    Write-Host "`nMounting the registry..." -ForegroundColor Yellow
     if ($Target -eq "Online") {
         #Mount Registry Roots
         #if (!(Get-PSDrive -Name Reg_HKLM_COMPONENTS)) {New-PSDrive -PSProvider Registry -Root HKEY_LOCAL_MACHINE\COMPONENTS -Name Reg_HKLM_COMPONENTS -Scope Global -ErrorAction Stop}
         if (!(Get-PSDrive -Name Reg_HKLM_SOFTWARE -ErrorAction SilentlyContinue)) {New-PSDrive -PSProvider Registry -Root HKEY_LOCAL_MACHINE\SOFTWARE -Name Reg_HKLM_SOFTWARE -Scope Global -ErrorAction Stop}
         if (!(Get-PSDrive -Name Reg_HKLM_SYSTEM -ErrorAction SilentlyContinue)) {New-PSDrive -PSProvider Registry -Root HKEY_LOCAL_MACHINE\SYSTEM -Name Reg_HKLM_SYSTEM -Scope Global -ErrorAction Stop}
-        if (!(Get-PSDrive -Name Reg_HKDefaultUser -ErrorAction SilentlyContinue)) {Import-RegistryHive -File "$env:SystemDrive\\Users\Default\NTUSER.DAT" -Key "HKLM\TEMP_HKDefaultUser" -Name Reg_HKDefaultUser -ErrorAction Stop}
+        if (!(Get-PSDrive -Name Reg_HKDefaultUser -ErrorAction SilentlyContinue)) {Import-RegistryHive -File "$env:SystemDrive\Users\Default\NTUSER.DAT" -Key "HKLM\TEMP_HKDefaultUser" -Name Reg_HKDefaultUser -ErrorAction Stop}
         if (!(Get-PSDrive -Name Reg_HKCU -ErrorAction SilentlyContinue)) {New-PSDrive -PSProvider Registry -Root HKEY_CURRENT_USER -Name Reg_HKCU -Scope Global -ErrorAction Stop}
         if (!(Get-PSDrive -Name Reg_HKCR -ErrorAction SilentlyContinue)) {New-PSDrive -PSProvider Registry -Root HKEY_CLASSES_ROOT -Name Reg_HKCR -Scope Global -ErrorAction Stop}
 
@@ -1660,8 +1743,7 @@ Function Mount_Registry {
 }
 
 Function UnMount_Registry {
-    Write-Host ""
-    Write-Host "Unmounting the registry..." -ForegroundColor Yellow
+    Write-Host "`nUnmounting the registry..." -ForegroundColor Yellow
 
     $RegDrives = @("Reg_HKCR","Reg_HKCU","Reg_HKLM_SOFTWARE","Reg_HKLM_SYSTEM","Reg_HKDefaultUser")
     $UnmountAttempts = 1
@@ -1975,6 +2057,7 @@ if ($Script:Remove_Cortana) {Remove_Cortana}
 Remove_Telemetry
 Remove_Edge
 Stop_EdgePDF
+Restore_EdgePDF
 Remove_OneDrive
 Clean_StartMenu
 System_Tweaks
@@ -1987,5 +2070,4 @@ if ($Target -eq "Online") {
     #Cleanup_Image #Cleans up the Component Store, however it appears newest versions of Windows might have issues using the "Reset PC" feature if this is done.
 }
 
-Write-Host ""
-Write-Host "Debloat, Privacy, and cleanup complete!" -ForegroundColor White -BackgroundColor DarkCyan 
+Write-Host "`nDebloat, Privacy, and cleanup complete!" -ForegroundColor White -BackgroundColor DarkCyan 
