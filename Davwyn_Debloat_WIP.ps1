@@ -695,8 +695,11 @@ Function Debloat_BlockBloatware {
         if(!(Test-Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI")){ New-Item -Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI" -Force -ErrorAction SilentlyContinue}
         New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI" -Name "DisableAIDataAnalysis" -PropertyType Dword -Value 1 -Force
         
-        
-    	Get-WindowsOptionalFeature -Online | Where-Object {'State' -notin @('Disabled';'DisabledWithPayloadRemoved') -and ($_.Name -like "Recall")} | Disable-WindowsOptionalFeature -Online -Remove -NoRestart -ErrorAction 'Continue'
+        if ($Target -eq "Online") {
+            Get-WindowsOptionalFeature -Online | Where-Object {'State' -notin @('Disabled';'DisabledWithPayloadRemoved') -and ($_.Name -like "Recall")} | Disable-WindowsOptionalFeature -Online -Remove -NoRestart -ErrorAction 'Continue'
+        } else {
+            Get-WindowsOptionalFeature -Path $target | Where-Object {'State' -notin @('Disabled';'DisabledWithPayloadRemoved') -and ($_.Name -like "Recall")} | Disable-WindowsOptionalFeature -Online -Remove -NoRestart -ErrorAction 'Continue'
+        }
     }
     
     #Prevents bloatware applications from returning and removes Start Menu suggestions
