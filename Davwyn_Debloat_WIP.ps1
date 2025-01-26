@@ -1249,17 +1249,22 @@ Function Clean_StartMenu {
             $startlayout=@"
 <?xml version="1.0" encoding="utf-8"?>
 <LayoutModificationTemplate xmlns:defaultlayout="http://schemas.microsoft.com/Start/2014/FullDefaultLayout" xmlns:start="http://schemas.microsoft.com/Start/2014/StartLayout" Version="1" xmlns="http://schemas.microsoft.com/Start/2014/LayoutModification" xmlns:taskbar="http://schemas.microsoft.com/Start/2014/TaskbarLayout">
-  <DefaultLayoutOverride LayoutCustomizationRestrictionType="OnlySpecifiedGroups">
+  <LayoutOptions StartTileGroupCellWidth="6" />
+  <DefaultLayoutOverride>
     <StartLayoutCollection>
       <defaultlayout:StartLayout GroupCellWidth="6">
-
+        <start:Group Name="">
+          <start:Tile Size="2x2" Column="4" Row="0" AppUserModelID="windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel" />
+          <start:DesktopApplicationTile Size="2x2" Column="2" Row="0" DesktopApplicationLinkPath="%APPDATA%\Microsoft\Windows\Start Menu\Programs\System Tools\File Explorer.lnk" />
+        </start:Group>
       </defaultlayout:StartLayout>
     </StartLayoutCollection>
   </DefaultLayoutOverride>
   <CustomTaskbarLayoutCollection PinListPlacement="Replace">
     <defaultlayout:TaskbarLayout>
       <taskbar:TaskbarPinList>
-        <taskbar:DesktopApp DesktopApplicationLinkPath="%APPDATA%\Microsoft\Windows\Start Menu\Programs\System Tools\File Explorer.lnk" />
+        <taskbar:DesktopApp DesktopApplicationID="Microsoft.Windows.Explorer" />
+        <taskbar:UWA AppUserModelID="windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel" />
       </taskbar:TaskbarPinList>
     </defaultlayout:TaskbarLayout>
   </CustomTaskbarLayoutCollection>
@@ -1302,7 +1307,7 @@ Function System_Tweaks {
     #Harden C:\ to stop non-administrators modifying the root C: Drive
     $title    = "Harden C: Drive Root Security?"
     $question = "Answering yes makes the root of C:\ modifiable only by administrators."
-    $decision = 0 #$Host.UI.PromptForChoice($title, $question, $choices, 1)
+    $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
         Write-Host "`nHardening C: Drive Root"
         icacls.exe C:\ /remove:g "*S-1-5-11"
@@ -1311,7 +1316,7 @@ Function System_Tweaks {
     #Block Edge First Run Experience
     $title    = "Disable Edge First Run Experience?"
     $question = "Answering yes stops Edge from asking you about setting up your Edge preferences on first launch."
-    $decision = 0 #$Host.UI.PromptForChoice($title, $question, $choices, 1)
+    $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
         Write-Host "`nDisabling the storing of user activity history"
         if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge" -Force -ErrorAction SilentlyContinue}
@@ -1322,7 +1327,7 @@ Function System_Tweaks {
     if ($WinVer -eq 11) {
         $title    = "Align Taskbar to the left?"
         $question = "Change Windows 11 Start Menu to be on the left instead of center?"
-        $decision = 0 #$Host.UI.PromptForChoice($title, $question, $choices, 1)
+        $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
         if ($decision -eq 0) {
             Write-Host "Start Menu set to the left side (If Windows 11)"
             if(!(Test-Path -LiteralPath "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {  New-Item "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue };
@@ -1360,6 +1365,21 @@ Function System_Tweaks {
 
             if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {  New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue };
             New-ItemProperty -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+        }
+    }
+
+    #W11 Classic Context Menu
+    if ($WinVer -eq 11) {
+        $title    = "Revert to Classic Context Menus?"
+        $question = "Would you like back the classic right-click context menu that shows all options by default?"
+        $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
+        if ($decision -eq 0) {
+            Write-Host "Removing Widgits from the Taskbar" -ForegroundColor White -BackgroundColor DarkBlue
+            if(!(Test-Path -LiteralPath "Reg_HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32")) {  New-Item "Reg_HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -force -ea SilentlyContinue };
+            New-ItemProperty -LiteralPath "Reg_HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -Name '(Default)' -Value $null -PropertyType String -Force -ea SilentlyContinue;
+
+            if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32")) {  New-Item "Reg_HKDefaultUser:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -force -ea SilentlyContinue };
+            New-ItemProperty -LiteralPath "Reg_HKDefaultUser:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -Name '(Default)' -Value $null -PropertyType String -Force -ea SilentlyContinue;
         }
     }
 
