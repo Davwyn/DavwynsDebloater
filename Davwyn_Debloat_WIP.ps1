@@ -136,7 +136,8 @@ Function Bloatware_Appx {
         @{Item="Microsoft.WindowsCamera";Desc="A basic webcam camera app to see what your webcam sees and take basic pictures."},
         @{Item="Microsoft.YourPhone";Desc="App to connect to your cell phone if you install the companion app.`nAllows you to view test messages and other things from your phone.`nWhile using this Microsoft might spy on your text messages and content."},
         @{Item="Microsoft.MinecraftUWP";Desc="The Windows 10 edition aka Bedrock edition of Minecraft.`nA Minecraft license is required to use it.`nYou can reinstall this from the windows store if you want it later."},
-        @{Item="Microsoft.OutlookForWindows";Desc="A basic version of Microsoft Outlook desktop app."}
+        @{Item="Microsoft.OutlookForWindows";Desc="A basic version of Microsoft Outlook desktop app."},
+        @{Item="Microsoft.Copilot";Desc="An app for Microsoft Copilot Ai. Simply opens Edge to the Copilot website."}
     ) | % { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
     
     Write-Host "`nThe following Appx Apps are sometimes wanted. Only answer Yes if you wish to remove them." -ForegroundColor White -BackgroundColor DarkCyan
