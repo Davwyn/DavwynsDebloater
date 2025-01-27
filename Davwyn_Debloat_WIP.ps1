@@ -1357,7 +1357,7 @@ Function System_Tweaks {
         }
     }
 
-    #W11 Hide Widgets on Taskbar
+    #W11 Hide Widgets button on Taskbar
     if ($WinVer -eq 11) {
         $title    = "Hide Widgets?"
         $question = "Hide the Widgets button from the Task Bar?`nThis is redundant if you removed Widgets earlier step but does no harm."
@@ -1369,6 +1369,18 @@ Function System_Tweaks {
 
             if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {  New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue };
             New-ItemProperty -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+        }
+    }
+
+    #Disable News and Interests aka Widgets Win 11
+    if ($WinVer -eq 11) {
+        $title    = "Hide Windows 11 News and Interests?"
+        $question = "Hide the annoying Windows 11 News and Interests widgets that show ads, weather, and other annoyances that also slow down workstations."
+        $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
+        if ($decision -eq 0) {
+            Write-Host "Disabling Windows News and Interests aka Widgets"
+	        if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -force -ea SilentlyContinue};
+	        New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
         }
     }
 
@@ -1436,18 +1448,6 @@ Function System_Tweaks {
             Write-Host "Disabling Windows News and Interests" -ForegroundColor White -BackgroundColor DarkBlue
 	        if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds" -force -ea SilentlyContinue};
 	        New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
-        }
-    }
-
-	#Disable News and Interests aka Widgets Win 11
-    if ($WinVer -eq 11) {
-        $title    = "Hide Windows 11 Widgets?"
-        $question = "Hide the annoying Windows 11 Widgets that show ads, weather, and other annoyances that also slow down workstations."
-        $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
-        if ($decision -eq 0) {
-            Write-Host "Disabling Windows News and Interests aka Widgets"
-	        if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -force -ea SilentlyContinue};
-	        New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
         }
     }
 
