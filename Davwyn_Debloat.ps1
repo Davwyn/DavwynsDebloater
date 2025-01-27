@@ -1307,6 +1307,16 @@ Function System_Tweaks {
     Pause
 
     $choices  = "&Yes", "&No"
+
+    #Block automatic bitlocker encryption
+    $title    = "Block Bitlocker from automatically encrypting your drive?"
+    $question = "Bitlocker encrypts the contents of your computer which can be useful for business, but for a normal PC user can degrade performance and if you don't keep your bitlocker key somewhere safe you can permanently lose your data.`nWould you like to attempt to prevent Bitlocker from enabling? (Has no effect if Bitlocker is already enabled!)"
+    $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
+    if ($decision -eq 0) {
+        Write-Host "`nAttempting to block Bitlocker automatic encryption."
+        if(!(Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\BitLocker")){ New-Item -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\BitLocker" -Force -ErrorAction SilentlyContinue}
+	    New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\BitLocker" -Name "PreventDeviceEncryption" -Value 1 -PropertyType Dword -Force
+    }
     
     #Harden C:\ to stop non-administrators modifying the root C: Drive
     $title    = "Harden C: Drive Root Security?"
@@ -1360,7 +1370,7 @@ Function System_Tweaks {
     #W11 Hide Widgets button on Taskbar
     if ($WinVer -eq 11) {
         $title    = "Hide Widgets?"
-        $question = "Hide the Widgets button from the Task Bar?`nThis is redundant if you removed Widgets earlier step but does no harm."
+        $question = "Hide the Widgets button from the Task Bar?`nIt might be wise to select this even if you removed the system component earlier.`nGets rid of News, Weather, Interests, Stocks, etc. which can use up a lot of system resources."
         $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
         if ($decision -eq 0) {
             Write-Host "Removing Widgits from the Taskbar" -ForegroundColor White -BackgroundColor DarkBlue
@@ -1369,17 +1379,8 @@ Function System_Tweaks {
 
             if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {  New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue };
             New-ItemProperty -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
-        }
-    }
 
-    #Disable News and Interests aka Widgets Win 11
-    if ($WinVer -eq 11) {
-        $title    = "Hide Windows 11 News and Interests?"
-        $question = "Hide the annoying Windows 11 News and Interests widgets that show ads, weather, and other annoyances that also slow down workstations."
-        $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
-        if ($decision -eq 0) {
-            Write-Host "Disabling Windows News and Interests aka Widgets"
-	        if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -force -ea SilentlyContinue};
+            if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -force -ea SilentlyContinue};
 	        New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
         }
     }
