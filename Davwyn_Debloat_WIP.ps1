@@ -699,7 +699,7 @@ Function Debloat_BlockBloatware {
         if ($Target -eq "Online") {
             Get-WindowsOptionalFeature -Online | Where-Object {'State' -notin @('Disabled';'DisabledWithPayloadRemoved') -and ($_.Name -like "Recall")} | Disable-WindowsOptionalFeature -Online -Remove -NoRestart -ErrorAction 'Continue'
         } else {
-            Get-WindowsOptionalFeature -Path $target | Where-Object {'State' -notin @('Disabled';'DisabledWithPayloadRemoved') -and ($_.Name -like "Recall")} | Disable-WindowsOptionalFeature -Online -Remove -NoRestart -ErrorAction 'Continue'
+            Get-WindowsOptionalFeature -Path $target | Where-Object {'State' -notin @('Disabled';'DisabledWithPayloadRemoved') -and ($_.Name -like "Recall")} | Disable-WindowsOptionalFeature -Path $target -Remove -NoRestart -ErrorAction 'Continue'
         }
     }
     
