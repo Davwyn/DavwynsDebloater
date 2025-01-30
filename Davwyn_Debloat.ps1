@@ -1209,7 +1209,7 @@ Function Remove_OneDrive {
     $choices  = "&Yes", "&No"
     Write-Host ""
     $question = "Would you like to remove OneDrive?"
-    $decision = 1 #$Host.UI.PromptForChoice($title, $question, $choices, 1)
+    $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
         Write-Host "`nAttempting to uninstall OneDrive..."
         if ($Target -eq "Online"){
@@ -1466,7 +1466,7 @@ Function System_Tweaks {
 
 	#Disable Personalized Sites in Start Menu
     if ($WinVer -eq 11) {
-        $title    = "Recommended Websites in Start Menu?"
+        $title    = "Disable Recommended Websites in Start Menu?"
         $question = "Remove Recommended Websites from the Start Menu that shows recent and frequent websites?"
         $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
         if ($decision -eq 0) {
