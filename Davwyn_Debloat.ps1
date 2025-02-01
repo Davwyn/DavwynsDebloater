@@ -1142,6 +1142,9 @@ Function Remove_Edge {
         if (Test-Path "C:\Users\Default\Desktop\Microsoft Edge.lnk") {
             Remove-Item "C:\Users\Default\Desktop\Microsoft Edge.lnk" -Force
         }
+        if (Test-Path "C:\Users\Public\Desktop\Microsoft Edge.lnk") {
+            Remove-Item "C:\Users\Public\Desktop\Microsoft Edge.lnk" -Force
+        }
 
         if (Test-Path "Reg_HKLM_SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\EdgeUpdate") {
             Remove-Item "Reg_HKLM_SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\EdgeUpdate" -Force
