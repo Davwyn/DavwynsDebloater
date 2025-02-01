@@ -148,7 +148,6 @@ Function Bloatware_Appx {
         @{Item="Microsoft.OutlookForWindows";Desc="A basic version of Microsoft Outlook desktop app."},
         @{Item="Microsoft.Copilot";Desc="An app for Microsoft Copilot Ai. Simply opens Edge to the Copilot website."},
         @{Item="Microsoft.MicrosoftEdgeDevToolsClient";Desc="Developer tools for Microsoft Edge.`nRemove this if you plan to remove Edge itself."},
-        @{Item="MicrosoftWindows.UndockedDevKit";Desc=""},
         @{Item="Microsoft.PowerAutomateDesktop";Desc="Microsoft Power Automate Desktop app for creating automation workflows to perform repetitive tasks."},
         @{Item="MicrosoftWindows.CrossDevice";Desc="Enables syncing activities between Windows devices using the same Windows account. Such as files, data, notifications, and shared app experiences."},
         @{Item="Microsoft.Windows.DevHome";Desc="Tool for developers to get dashboard widgets to monitor workflows, track projects, and monitor system performance. Also to set up development environments. Not useful for non-Developers."}
@@ -1205,34 +1204,35 @@ Function Stop_EdgePDF {
 }
 
 Function Restore_EdgePDF {
-    #Stops edge from taking over as the default .PDF viewer
-    Write-Host "`n--Microsoft Edge PDF Handler--"
     if ($Script:Disable_EdgePDF -ne $true) {
+        #Stops edge from taking over as the default .PDF viewer
+        Write-Host "`n--Microsoft Edge PDF Handler--"
+
         $title    = "Restore Edge for handling PDFs? (To undo previous blocking PDFs)"
         $choices  = "&Yes", "&No"
         $question = "Would you like to once again allow Edge to open PDF files by default?"
         $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
-    }
 
-    if (($decision -eq 0) -and ($Script:Disable_EdgePDF -eq $false)) {
-        Write-Host "`nRestoring Edge as a .PDF viewer..."
-        $NoPDF = "Reg_HKCR:\.pdf"
-        $NoProgids = "Reg_HKCR:\.pdf\OpenWithProgids"
-        $NoWithList = "Reg_HKCR:\.pdf\OpenWithList"
-        If ((Get-ItemProperty $NoPDF NoOpenWith -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoPDF NoOpenWith}
-        If ((Get-ItemProperty $NoPDF NoStaticDefaultVerb -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoPDF NoStaticDefaultVerb}
-        If ((Get-ItemProperty $NoProgids NoOpenWith -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoProgids NoOpenWith}
-        If ((Get-ItemProperty $NoProgids NoStaticDefaultVerb -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoProgids NoStaticDefaultVerb}
-        If ((Get-ItemProperty $NoWithList NoOpenWith -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoWithList NoOpenWith}
-        If ((Get-ItemProperty $NoWithList NoStaticDefaultVerb -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoWithList NoStaticDefaultVerb}
+        if (($decision -eq 0) -and ($Script:Disable_EdgePDF -eq $false)) {
+            Write-Host "`nRestoring Edge as a .PDF viewer..."
+            $NoPDF = "Reg_HKCR:\.pdf"
+            $NoProgids = "Reg_HKCR:\.pdf\OpenWithProgids"
+            $NoWithList = "Reg_HKCR:\.pdf\OpenWithList"
+            If ((Get-ItemProperty $NoPDF NoOpenWith -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoPDF NoOpenWith}
+            If ((Get-ItemProperty $NoPDF NoStaticDefaultVerb -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoPDF NoStaticDefaultVerb}
+            If ((Get-ItemProperty $NoProgids NoOpenWith -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoProgids NoOpenWith}
+            If ((Get-ItemProperty $NoProgids NoStaticDefaultVerb -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoProgids NoStaticDefaultVerb}
+            If ((Get-ItemProperty $NoWithList NoOpenWith -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoWithList NoOpenWith}
+            If ((Get-ItemProperty $NoWithList NoStaticDefaultVerb -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoWithList NoStaticDefaultVerb}
 
-        #Appends an underscore '_' to the Registry key for Edge
-        #$Edge = "Reg_HKCR:\AppXd4nrz8ff68srnhf9t5a8sbjyar1cr723_"
-        #If (Test-Path $Edge) {Set-Item $Edge AppXd4nrz8ff68srnhf9t5a8sbjyar1cr723_}
-        $EdgePDF = "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge"
-        If ((Get-ItemProperty $EdgePDF AlwaysOpenPdfExternally -ErrorAction SilentlyContinue)) {Remove-ItemProperty -Path $EdgePDF -Name AlwaysOpenPdfExternally}
+            #Appends an underscore '_' to the Registry key for Edge
+            #$Edge = "Reg_HKCR:\AppXd4nrz8ff68srnhf9t5a8sbjyar1cr723_"
+            #If (Test-Path $Edge) {Set-Item $Edge AppXd4nrz8ff68srnhf9t5a8sbjyar1cr723_}
+            $EdgePDF = "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge"
+            If ((Get-ItemProperty $EdgePDF AlwaysOpenPdfExternally -ErrorAction SilentlyContinue)) {Remove-ItemProperty -Path $EdgePDF -Name AlwaysOpenPdfExternally}
 
-        Write-Host "`nEdge restored to open .PDF files."
+            Write-Host "`nEdge restored to open .PDF files."
+        }
     }
 }
 
