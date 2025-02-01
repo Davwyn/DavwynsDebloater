@@ -53,7 +53,13 @@ New-Variable -Name Remove_Teams -Scope Script
 New-Variable -Name Remove_Cortana -Scope Script
 New-Variable -Name Disable_EdgePDF -Scope Script
 
-$Host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(300, 5000)
+if( $Host -and $Host.UI -and $Host.UI.RawUI ) {
+  $rawUI = $Host.UI.RawUI
+  $oldSize = $rawUI.BufferSize
+  $typeName = $oldSize.GetType( ).FullName
+  $newSize = New-Object $typeName ($oldSize.Width, 5000)
+  $rawUI.BufferSize = $newSize
+}
 $Host.UI.RawUI.BackgroundColor = "Black"
 $Host.UI.RawUI.ForegroundColor = "White"
 
@@ -2156,4 +2162,5 @@ if ($Target -eq "Online") {
     #Cleanup_Image #Cleans up the Component Store, however it appears newest versions of Windows might have issues using the "Reset PC" feature if this is done.
 }
 
-Write-Host "`nDebloat, Privacy, and cleanup complete!" -ForegroundColor White -BackgroundColor DarkCyan 
+Write-Host "`nDebloat, Privacy, and cleanup complete!" -ForegroundColor White -BackgroundColor DarkCyan
+Sleep 5
