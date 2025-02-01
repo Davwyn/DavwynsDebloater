@@ -292,13 +292,13 @@ Function Remove_Appx {
 
     if ($Target -eq "Online") {
         foreach ($RemoveBloat in $Script:Appx_RemovalList) {
-            Write-Host "Trying to remove $RemoveBloat" -ForegroundColor White -BackgroundColor DarkBlue
+            Write-Host "`nTrying to remove $RemoveBloat" -ForegroundColor White -BackgroundColor DarkBlue
             try {
                 $Script:AppxProvisionedPackages | Where-Object DisplayName -like $RemoveBloat | Remove-AppxProvisionedPackage -Online -AllUsers -ErrorAction Stop -Verbose
             } Catch {
                 Write-Host "Error: Failed to remove Provisioning Package $RemoveBloat Error: $_"
             }
-            Write-Host "Trying to remove $RemoveBloat Appx Package"
+            Write-Host "`nTrying to remove $RemoveBloat Appx Package"
             Try {
                 $Script:AppxPackages | Where-Object Name -like $RemoveBloat | Remove-AppxPackage -AllUsers -ErrorAction Stop -Verbose
             } Catch {
@@ -307,7 +307,7 @@ Function Remove_Appx {
         }
     } else {
         foreach ($RemoveBloat in $Script:Appx_RemovalList) {
-            Write-Host "Trying to remove $RemoveBloat" -ForegroundColor White -BackgroundColor DarkBlue
+            Write-Host "`nTrying to remove $RemoveBloat" -ForegroundColor White -BackgroundColor DarkBlue
             $Script:AppxProvisionedPackages | Where-Object DisplayName -like $RemoveBloat | Remove-AppxProvisionedPackage -Path $MountDir -ErrorAction Continue -Verbose
         }
    }
@@ -339,6 +339,7 @@ Function Bloatware_WindowsCapabilities {
     foreach ($BloatPackage in $BloatPackages) {
         $PackageArray = $Script:WindowsCapabilities | Where-Object {$_.Name -like "$($BloatPackage.Item)*"}
         if ($PackageArray) {
+            Write-Host ""
             $question = "Remove system package $($BloatPackage.Item)`?`nInfo: $($BloatPackage.Desc)"
             $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
             if ($decision -eq 0) {
@@ -355,7 +356,7 @@ Function Remove_WindowsCapabilities {
     Write-Host "`nRemoving Unwanted Windows Capabilities..." -ForegroundColor White -BackgroundColor DarkGreen
 
     foreach ($Package in $Script:WindowsCapabilities_RemovalList){
-        Write-Host "Removing $Package..." -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "`nRemoving $Package..." -ForegroundColor White -BackgroundColor DarkBlue
         if ($Target -eq "Online") {
             Remove-WindowsCapability -Online -Name $Package
             #dism /Online /Remove-Package /NoRestart /PackageName:$Package
@@ -450,7 +451,7 @@ Function Remove_Xbox {
     }
 
     #Disable Game DVR
-    Write-Host "Disabling Game DVR" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nDisabling Game DVR" -ForegroundColor White -BackgroundColor DarkBlue
     if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\GameDVR")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\GameDVR" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\GameDVR" -Name "AllowGameDVR" -Value 0  -PropertyType Dword -Force
 	if(!(Test-Path "Reg_HKCU:\System\GameConfigStore")){ New-Item -Path "Reg_HKCU:\System\GameConfigStore" -Force -ErrorAction SilentlyContinue}
@@ -515,7 +516,7 @@ Function Bloatware_Teams {
 Function Remove_Teams {
     Write-Host "`nRemoving non-M365 Microsoft Teams/Chat..."  -ForegroundColor White -BackgroundColor DarkGreen
 
-    Write-Host "Setting Registry settings to block Teams/Chat from reappearing..." -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nSetting Registry settings to block Teams/Chat from reappearing..." -ForegroundColor White -BackgroundColor DarkBlue
 	if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Chat")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Chat" -force -ea SilentlyContinue};
 	New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Chat" -Name "ChatIcon" -Value 3 -PropertyType DWord -Force -ea SilentlyContinue;
 
@@ -539,7 +540,6 @@ Function Bloatware_Cortana {
     $title    = "Remove Cortana?"
     $choices  = "&Yes", "&No"
     
-    Write-Host ""
     $question = "Do you want to remove Cortana search and virtual assistant if it's on your system?`nThis will eliminate a lot of ads and unwanted bing searches."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
@@ -551,7 +551,7 @@ Function Bloatware_Cortana {
 Function Remove_Cortana {
 	Write-Host "`nDisabling Cortana and Online Start Menu Search..." -ForegroundColor White -BackgroundColor DarkGreen	
 
-    Write-Host "Disabling Bing Search and Cortana in Start Menu..." -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "`nDisabling Bing Search and Cortana in Start Menu..." -ForegroundColor White -BackgroundColor DarkBlue
     If (!(Test-Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search")) {New-Item -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" -Force | Out-Null}
 	New-ItemProperty -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -Value 0 -PropertyType Dword -Force
     New-ItemProperty -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" -Name "CortanaConsent" -Value 0 -PropertyType Dword -Force
@@ -676,12 +676,12 @@ Function Remove_Services {
 
     foreach ($Bloat in $Services_RemovalList) {
         if ($Target -eq "Online") {
-            Write-Host "Trying to disable $($Service.DisplayName)" -ForegroundColor White -BackgroundColor DarkBlue
+            Write-Host "`nTrying to disable $($Service.DisplayName)" -ForegroundColor White -BackgroundColor DarkBlue
             $Service = Get-Service -Name $Bloat -ErrorAction SilentlyContinue
             if($Service.Status -match "Run") {Stop-Service -Name $Service -Force -ErrorAction SilentlyContinue}
             $Service | Set-Service -StartupType Disabled -Verbose
         } else {
-            Write-Host "Trying to disable $($Bloat.DisplayName)" -ForegroundColor White -BackgroundColor DarkBlue
+            Write-Host "`nTrying to disable $($Bloat.DisplayName)" -ForegroundColor White -BackgroundColor DarkBlue
             $registryPath = "Reg_HKLM_SYSTEM:\ControlSet001\Services\$Bloat"
             if (Test-Path $registryPath) {New-ItemProperty $registryPath Start -Value 4 -PropertyType Dword -Force}
         }
@@ -1233,7 +1233,6 @@ Function Remove_OneDrive {
 
     $title    = "Remove Microsoft OneDrive?"
     $choices  = "&Yes", "&No"
-    Write-Host ""
     $question = "Would you like to remove OneDrive?"
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
@@ -1285,7 +1284,6 @@ Function Clean_StartMenu {
 
     $title    = "Clean the Start Menu?"
     $choices  = "&Yes", "&No"
-    Write-Host ""
     $question = "Would you like to clean the Start Menu?`nThis will only affect new users logging into the computer or if you were to clear your local profile or Start Menu data."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
