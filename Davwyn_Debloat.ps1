@@ -133,7 +133,7 @@ Function Bloatware_Appx {
     $choices  = "&Yes", "&No"
 
     $Bloatware = @(
-        @{Item="MicrosoftWindows.Client.WebExperience";Desc="The widgits found on the left side of the taskbar.`nEven if you hide the widgets in Taskbar settings they stay loaded and load up several browser tabs worth of constent 24/7.`nHighly suggested to remove this for a huge performance boost and for privacy."},
+        @{Item="MicrosoftWindows.Client.WebExperience";Desc="The widgits found on the left side of the taskbar.`nEven if you hide the widgets in Taskbar settings they stay loaded and load up several browser tabs worth of content, constantly 24/7.`nHighly suggested to remove this for a huge performance boost and for privacy."},
         @{Item="Microsoft.MicrosoftSolitaireCollection";Desc="The Windows Solitare game collection.`nThis is not the classic Solitaire games but rather an online service version.`nYou can reinstall this from the store if you want it later."},
         @{Item="Microsoft.3DBuilder";Desc="Allows users to create and print 3D objects"},
         @{Item="Microsoft.Microsoft3DViewer";Desc="App to view 3D Model files such as OBJ files."},
@@ -887,7 +887,7 @@ Function Remove_Telemetry {
     #Preping mixed Reality Portal for removal
 
     $title    = "Make Mixed Reality Portal removeable?"
-    $question = "Do you want to make Widnows Mixed Reality Portal removeable?`nIf you want to uninstall it you can find it in Settings->Apps to uninstall afterwards."
+    $question = "Do you want to make Windows Mixed Reality Portal removeable?`nIf you want to uninstall it you can find it in Settings->Apps to uninstall afterwards."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
         Write-Host "`nSetting Mixed Reality Portal value to 0 so that you can uninstall it in Settings" -ForegroundColor White -BackgroundColor DarkBlue
