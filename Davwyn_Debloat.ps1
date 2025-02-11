@@ -146,7 +146,6 @@ Function Bloatware_Appx {
         @{Item="Microsoft.YourPhone";Desc="App to connect to your cell phone if you install the companion app.`nAllows you to view test messages and other things from your phone.`nWhile using this Microsoft might spy on your text messages and content."},
         @{Item="Microsoft.MinecraftUWP";Desc="The Windows 10 edition aka Bedrock edition of Minecraft.`nA Minecraft license is required to use it.`nYou can reinstall this from the windows store if you want it later."},
         @{Item="Microsoft.OutlookForWindows";Desc="A basic version of Microsoft Outlook desktop app."},
-        @{Item="Microsoft.Copilot";Desc="An app for Microsoft Copilot Ai. Simply opens Edge to the Copilot website."},
         @{Item="Microsoft.MicrosoftEdgeDevToolsClient";Desc="Developer tools for Microsoft Edge.`nRemove this if you plan to remove Edge itself."},
         @{Item="Microsoft.PowerAutomateDesktop";Desc="Microsoft Power Automate Desktop app for creating automation workflows to perform repetitive tasks."},
         @{Item="MicrosoftWindows.CrossDevice";Desc="Enables syncing activities between Windows devices using the same Windows account. Such as files, data, notifications, and shared app experiences."},
@@ -339,7 +338,7 @@ Function Bloatware_WindowsCapabilities {
     ) | % { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 
 
-    Write-Host "`nThe following are Windows Windows Capabilities you can optionally remove.`nThis cannot be undone so choose carefully." -ForegroundColor White -BackgroundColor DarkCyan 
+    Write-Host "`nThe following are Windows Capabilities you can optionally remove.`nThis cannot be undone so choose carefully." -ForegroundColor White -BackgroundColor DarkCyan 
     
     foreach ($BloatPackage in $BloatPackages) {
         $PackageArray = $Script:WindowsCapabilities | Where-Object {$_.Name -like "$($BloatPackage.Item)*"}
@@ -360,17 +359,17 @@ Function Bloatware_WindowsCapabilities {
 Function Remove_WindowsCapabilities {
     Write-Host "`nRemoving Unwanted Windows Capabilities..." -ForegroundColor White -BackgroundColor DarkGreen
 
-    foreach ($Package in $Script:WindowsCapabilities_RemovalList){
-        Write-Host "`nRemoving $Package..." -ForegroundColor White -BackgroundColor DarkBlue
+    foreach ($Capability in $Script:WindowsCapabilities_RemovalList){
+        Write-Host "`nRemoving $Capability..." -ForegroundColor White -BackgroundColor DarkBlue
         if ($Target -eq "Online") {
-            Remove-WindowsCapability -Online -Name $Package
-            #dism /Online /Remove-Package /NoRestart /PackageName:$Package
+            Remove-WindowsCapability -Online -Name $Capability
+            #dism /Online /Remove-Package /NoRestart /PackageName:$Capability
         } else {
-            Remove-WindowsCapability -Path $target -Name $Package
-            #dism /Image:$Target /Remove-Package /NoRestart /PackageName:$Package /ScratchDir:"$MountDir`\Scratch"
+            Remove-WindowsCapability -Path $target -Name $Capability
+            #dism /Image:$Target /Remove-Package /NoRestart /PackageName:$Capability /ScratchDir:"$MountDir`\Scratch"
         }
     }
-    Write-Host "`nUnwanted packages removed." -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`nUnwanted Windows capabilities removed." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Bloatware_Xbox {
@@ -567,11 +566,6 @@ Function Remove_Cortana {
 
     If (!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search")) {New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Force | Out-Null}
     New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "DisableWebSearch" -Value 1 -PropertyType Dword -Force
-
-	#Write-Host "Stopping and disabling Windows Search indexing service..." -ForegroundColor White -BackgroundColor DarkBlue
-    #Stop-Service "WSearch" -WarningAction SilentlyContinue
-    #Set-Service "WSearch" -StartupType Disabled
-
     
     If (!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search")) {New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Force | Out-Null}
     New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0 -PropertyType DWord -Force
@@ -697,25 +691,6 @@ Function Remove_Services {
 Function Debloat_BlockBloatware {
 
     $choices  = "&Yes", "&No"
-    #Disable Windows Recall
-    $title    = "Disable Windows Recall?"
-    $question = "Disable Windows Recall? This is a massive potential data leak as malware can easily steal information about everything you do on your computer."
-    $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
-    if ($decision -eq 0) {
-        Write-Host "`nDisabling Windows Recall"
-        
-        if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\WindowsAI")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\WindowsAI" -Force -ErrorAction SilentlyContinue}
-        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\WindowsAI" -Name "DisableAIDataAnalysis" -PropertyType Dword -Value 1 -Force
-
-        if(!(Test-Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI")){ New-Item -Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI" -Force -ErrorAction SilentlyContinue}
-        New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI" -Name "DisableAIDataAnalysis" -PropertyType Dword -Value 1 -Force
-        
-        if ($Target -eq "Online") {
-            Get-WindowsOptionalFeature -Online | Where-Object {'State' -notin @('Disabled';'DisabledWithPayloadRemoved') -and ($_.FeatureName -like "Recall")} | Disable-WindowsOptionalFeature -Online -Remove -NoRestart -ErrorAction 'Continue'
-        } else {
-            Get-WindowsOptionalFeature -Path $target | Where-Object {'State' -notin @('Disabled';'DisabledWithPayloadRemoved') -and ($_.FeatureName -like "Recall")} | Disable-WindowsOptionalFeature -Path $target -Remove -NoRestart -ErrorAction 'Continue'
-        }
-    }
     
     #Prevents bloatware applications from returning and removes Start Menu suggestions
     Write-Host "`nAdding Registry key to prevent bloatware apps from returning..." -ForegroundColor White -BackgroundColor DarkGreen
@@ -1118,8 +1093,26 @@ Function Remove_Telemetry {
     Write-Host "`nTelemetry blocked." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
+Function Remove_Recall {
+    $choices  = "&Yes", "&No"
+    #Disable Windows Recall
+    $title    = "Disable Windows Recall?"
+    $question = "Disable Windows Recall? This is a massive potential data leak as malware can easily steal information about everything you do on your computer."
+    $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
+    if ($decision -eq 0) {
+        Write-Output "`nDisabling Windows Recall"
+        if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\WindowsAI")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\WindowsAI" -Force -ErrorAction SilentlyContinue}
+        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\WindowsAI" -Name "DisableAIDataAnalysis" -PropertyType Dword -Value 1 -Force
+
+        if(!(Test-Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI")){ New-Item -Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI" -Force -ErrorAction SilentlyContinue}
+        New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Policies\Microsoft\Windows\WindowsAI" -Name "DisableAIDataAnalysis" -PropertyType Dword -Value 1 -Force
+
+        Get-WindowsOptionalFeature -Online | Where-Object {$_.State -notin @('Disabled';'DisabledWithPayloadRemoved') -and ($_.FeatureName -like "Recall")} | Disable-WindowsOptionalFeature -Online -Remove -NoRestart -ErrorAction 'Continue'
+    }
+}
+
 Function Remove_Edge {
-    Write-Host "--Microsoft Edge--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--Microsoft Edge--" -ForegroundColor White -BackgroundColor DarkCyan
 
     $title    = "Disable Microsoft Edge App?"
     $choices  = "&Yes", "&No"
@@ -1205,7 +1198,7 @@ Function Stop_EdgePDF {
 
 Function Restore_EdgePDF {
     if ($Script:Disable_EdgePDF -ne $true) {
-        #Stops edge from taking over as the default .PDF viewer
+        #Restore allowing Edge to take over as the default .PDF viewer
         Write-Host "`n--Microsoft Edge PDF Handler--"
 
         $title    = "Restore Edge for handling PDFs? (To undo previous blocking PDFs)"
@@ -1225,9 +1218,6 @@ Function Restore_EdgePDF {
             If ((Get-ItemProperty $NoWithList NoOpenWith -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoWithList NoOpenWith}
             If ((Get-ItemProperty $NoWithList NoStaticDefaultVerb -ErrorAction SilentlyContinue)) {Remove-ItemProperty $NoWithList NoStaticDefaultVerb}
 
-            #Appends an underscore '_' to the Registry key for Edge
-            #$Edge = "Reg_HKCR:\AppXd4nrz8ff68srnhf9t5a8sbjyar1cr723_"
-            #If (Test-Path $Edge) {Set-Item $Edge AppXd4nrz8ff68srnhf9t5a8sbjyar1cr723_}
             $EdgePDF = "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge"
             If ((Get-ItemProperty $EdgePDF AlwaysOpenPdfExternally -ErrorAction SilentlyContinue)) {Remove-ItemProperty -Path $EdgePDF -Name AlwaysOpenPdfExternally}
 
@@ -1289,11 +1279,11 @@ Function Remove_OneDrive {
 }
 
 Function Clean_StartMenu {
-    Write-Host "`n--Start Menu--" -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host "`n--Start Menu and Taskbar--" -ForegroundColor White -BackgroundColor DarkCyan
 
-    $title    = "Clean the Start Menu?"
+    $title    = "Clean the Start Menu and Taskbar?"
     $choices  = "&Yes", "&No"
-    $question = "Would you like to clean the Start Menu?`nThis will only affect new users logging into the computer or if you were to clear your local profile or Start Menu data."
+    $question = "Would you like to clean the Start Menu and Taskbar?`nThis will only affect new users logging into the computer or if you were to clear your local profile or Start Menu data."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
         Write-Host "`nCleaning Start Menu for new users..." -ForegroundColor White -BackgroundColor DarkGreen
@@ -1337,6 +1327,25 @@ Function Clean_StartMenu {
             #New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Microsoft\PolicyManager\current\device\Start" -Name "ConfigureStartPins_ProviderSet" -Value 1 -PropertyType DWord -Force
         }
         Write-Host "`nStart menu cleaned for new users." -ForegroundColor White -BackgroundColor DarkCyan
+
+        $taskbarlayout=@"
+<LayoutModificationTemplate xmlns="http://schemas.microsoft.com/Start/2014/LayoutModification" xmlns:defaultlayout="http://schemas.microsoft.com/Start/2014/FullDefaultLayout" xmlns:start="http://schemas.microsoft.com/Start/2014/StartLayout" xmlns:taskbar="http://schemas.microsoft.com/Start/2014/TaskbarLayout" Version="1">
+  <CustomTaskbarLayoutCollection PinListPlacement="Replace">
+    <defaultlayout:TaskbarLayout>
+      <taskbar:TaskbarPinList>
+        <taskbar:DesktopApp DesktopApplicationID="Microsoft.Windows.Explorer" />
+      </taskbar:TaskbarPinList>
+    </defaultlayout:TaskbarLayout>
+  </CustomTaskbarLayoutCollection>
+</LayoutModificationTemplate>
+"@
+ 
+    $taskbarlayout | Out-File $ENV:SystemRoot\TaskbarLayout.xml
+    if(!(Test-Path -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer")) {  New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -force -ea SilentlyContinue }
+    New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -Name "StartLayoutFile" -Value "$ENV:SystemRoot\TaskbarLayout.xml" -PropertyType String -Force
+    New-ItemProperty -LiteralPath "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -Name "LockedStartLayout" -Value 1 -PropertyType Dword -Force
+    Write-Host "`nTaskbar cleaned for new users." -ForegroundColor White -BackgroundColor DarkCyan
+
     }
 }
 
@@ -1495,6 +1504,12 @@ Function System_Tweaks {
         
         if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search")) {New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -force -ea SilentlyContinue};
 	    New-ItemProperty -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
+        New-ItemProperty -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarModeCache" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
+
+        #Alternate method using RunOnce
+        #if(!(Test-Path -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\RunOnce")) {New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -force -ea SilentlyContinue};
+
+        #New-ItemProperty -LiteralPath "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "TaskbarSearchboxIcon" -Value 'REG ADD "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Search" /v SearchboxTaskbarMode /t REG_DWORD /d 1 /f' -PropertyType String -Force -ea SilentlyContinue;
     }
 
 	#Disable News and Interests
@@ -2147,6 +2162,7 @@ if ($Script:Remove_Xbox) {Remove_Xbox}
 if ($Script:Remove_Teams) {Remove_Teams}
 if ($Script:Remove_Cortana) {Remove_Cortana}
 Remove_Telemetry
+Remove_Recall
 Remove_Edge
 Stop_EdgePDF
 Restore_EdgePDF
