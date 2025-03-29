@@ -54,11 +54,11 @@ New-Variable -Name Remove_Cortana -Scope Script
 New-Variable -Name Disable_EdgePDF -Scope Script
 
 if( $Host -and $Host.UI -and $Host.UI.RawUI ) {
-  $rawUI = $Host.UI.RawUI
-  $oldSize = $rawUI.BufferSize
-  $typeName = $oldSize.GetType( ).FullName
-  $newSize = New-Object $typeName ($oldSize.Width, 5000)
-  $rawUI.BufferSize = $newSize
+    $rawUI = $Host.UI.RawUI
+    $oldSize = $rawUI.BufferSize
+    $typeName = $oldSize.GetType( ).FullName
+    $newSize = New-Object $typeName ($oldSize.Width, 5000)
+    $rawUI.BufferSize = $newSize
 }
 $Host.UI.RawUI.BackgroundColor = "Black"
 $Host.UI.RawUI.ForegroundColor = "White"
@@ -312,8 +312,8 @@ Function Remove_Appx {
             Write-Host "`nTrying to remove $RemoveBloat" -ForegroundColor White -BackgroundColor DarkBlue
             $Script:AppxProvisionedPackages | Where-Object DisplayName -like $RemoveBloat | Remove-AppxProvisionedPackage -Path $MountDir -ErrorAction Continue -Verbose
         }
-   }
-   Write-Host "`nAppx Bloatware removed." -ForegroundColor White -BackgroundColor DarkCyan
+    }
+    Write-Host "`nAppx Bloatware removed." -ForegroundColor White -BackgroundColor DarkCyan
 }
 
 Function Bloatware_WindowsCapabilities {
@@ -323,7 +323,7 @@ Function Bloatware_WindowsCapabilities {
     $choices  = "&Yes", "&No"
 
     $BloatPackages = @(
-	    @{Item="Browser.InternetExplorer";Desc="Old Internet Explorer. Unless you really need it remove it for security sake!"},
+        @{Item="Browser.InternetExplorer";Desc="Old Internet Explorer. Unless you really need it remove it for security sake!"},
         @{Item="Media.WindowsMediaPlayer";Desc="The old fashioned Windows Media player from Windows XP days. Suggested to remove this and use VideoLan VLC Player instead."},
         @{Item="Microsoft.Wallpapers.Extended";Desc="Windows Wallpaper pack. Doesn't do much but save some disk space if you remove it."}
         @{Item="Hello.Face";Desc="Windows Face Unlock feature. If you don't have a Windows Hello compatible camera or even want to use Windows Hello you can remove this."},
@@ -418,7 +418,7 @@ Function Remove_Xbox {
     "XboxNetApiSvc" # Xbox Services
     )
     foreach ($Service in $XboxServices) {
-	    if ($Target -eq "Online") {
+        if ($Target -eq "Online") {
             Get-Service -Name $Service -ErrorAction SilentlyContinue | Set-Service -StartupType Disabled -Verbose
                 if($Service.Status -match "Run"){
                     Write-Host "Trying to disable $($Service.DisplayName)" -ForegroundColor White -BackgroundColor DarkBlue
@@ -695,8 +695,8 @@ Function Debloat_BlockBloatware {
     $registryCurrentUser = "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
 	$registryDefaultUsers = "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
     If (!(Test-Path $registryPath)) {
-    New-Item $registryPath
-   }
+        New-Item $registryPath
+    }
     New-ItemProperty $registryPath DisableWindowsConsumerFeatures -Value 1 -PropertyType Dword -Force
     New-ItemProperty $registryPath DisableSoftLanding -Value 1 -PropertyType Dword -Force
     New-ItemProperty $registryPath DisableTailoredExperiencesWithDiagnosticData -Value 1 -PropertyType Dword -Force
@@ -919,7 +919,7 @@ Function Remove_Telemetry {
     if(!(Test-Path "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People")){ New-Item -Path "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People" PeopleBand -Value 0 -PropertyType Dword -Force
 
-   #Restrict Windows Update P2P only to local network
+    #Restrict Windows Update P2P only to local network
     Write-Host "`nRestricting Windows Update P2P only to local network..." -ForegroundColor White -BackgroundColor DarkBlue
     if(!(Test-Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config" -Force -ErrorAction SilentlyContinue}
     New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config" -Name "DODownloadMode" -Value 0 -PropertyType Dword -Force
@@ -1009,7 +1009,7 @@ Function Remove_Telemetry {
 
     #Disable System Telemetry Services
     if ((Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet") -and ($Target -eq "Online")) {
-      #Disabled for testing if(Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Services\DiagTrack"){New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Services\DiagTrack" -Name "Start" -Value 4 -PropertyType DWord -Force}
+        #Disabled for testing if(Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Services\DiagTrack"){New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Services\DiagTrack" -Name "Start" -Value 4 -PropertyType DWord -Force}
         #if(Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Services\dmwappushservice"){New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Services\dmwappushservice" -Name "Start" -Value 4 -PropertyType DWord -Force}
         #Disabled for testing if(Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\WMI\Autologger\AutoLogger-Diagtrack-Listener"){New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\WMI\Autologger\AutoLogger-Diagtrack-Listener" -Name "Start" -Value 4 -PropertyType DWord -Force}
     } elseif ((Test-Path "Reg_HKLM_SYSTEM:\ControlSet001") -and ($Target -ne "Online")) {
@@ -1074,7 +1074,7 @@ Function Remove_Telemetry {
     if ($decision -eq 0) {
         Write-Host "`nDisabling Text Message Backup" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Messaging")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Messaging" -Force -ErrorAction SilentlyContinue}
-	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Messaging" -Name "AllowMessageSync" -Value 0 -PropertyType Dword -Force
+        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Messaging" -Name "AllowMessageSync" -Value 0 -PropertyType Dword -Force
     }
     
     #Disable Windows Error Reporting
@@ -1084,7 +1084,7 @@ Function Remove_Telemetry {
     if ($decision -eq 0) {
         Write-Host "`nDisabling Windows Error Reporting" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\Windows Error Reporting")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\Windows Error Reporting" -Force -ErrorAction SilentlyContinue}
-	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\Windows Error Reporting" -Name "Disabled" -Value 1 -PropertyType Dword -Force
+        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\Windows Error Reporting" -Name "Disabled" -Value 1 -PropertyType Dword -Force
     }
     Write-Host "`nTelemetry blocked." -ForegroundColor White -BackgroundColor DarkCyan
 }
@@ -1283,39 +1283,43 @@ Function Clean_StartMenu {
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
         Write-Host "`nCleaning Start Menu for new users..." -ForegroundColor White -BackgroundColor DarkGreen
-	    
+        if ($Target -eq "Online") {
+            $MountDir = $ENV:SystemRoot
+        } else {
+            $MountDir = $Target
+        } 
         if ($WinVer -eq 10) {
             $startlayout=@"
 <LayoutModificationTemplate xmlns:defaultlayout="http://schemas.microsoft.com/Start/2014/FullDefaultLayout" xmlns:start="http://schemas.microsoft.com/Start/2014/StartLayout" Version="1" xmlns="http://schemas.microsoft.com/Start/2014/LayoutModification">
-  <LayoutOptions StartTileGroupCellWidth="6" />
-  <DefaultLayoutOverride>
+    <LayoutOptions StartTileGroupCellWidth="6" />
+    <DefaultLayoutOverride>
     <StartLayoutCollection>
-      <defaultlayout:StartLayout GroupCellWidth="6">
+        <defaultlayout:StartLayout GroupCellWidth="6">
         <start:Group Name="">
-          <start:Tile Size="2x2" Column="4" Row="0" AppUserModelID="windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel" />
-          <start:DesktopApplicationTile Size="2x2" Column="2" Row="0" DesktopApplicationLinkPath="%APPDATA%\Microsoft\Windows\Start Menu\Programs\System Tools\File Explorer.lnk" />
+            <start:Tile Size="2x2" Column="4" Row="0" AppUserModelID="windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel" />
+            <start:DesktopApplicationTile Size="2x2" Column="2" Row="0" DesktopApplicationLinkPath="%APPDATA%\Microsoft\Windows\Start Menu\Programs\System Tools\File Explorer.lnk" />
         </start:Group>
-      </defaultlayout:StartLayout>
+        </defaultlayout:StartLayout>
     </StartLayoutCollection>
-  </DefaultLayoutOverride>
+    </DefaultLayoutOverride>
 </LayoutModificationTemplate>
 "@
-	        $startlayout | Out-File $ENV:TEMP\StartLayout.xml
+            $startlayout | Out-File $ENV:TEMP\StartLayout.xml
             try {
                 Import-StartLayout -LayoutPath $ENV:TEMP\StartLayout.xml -MountPath $MountDir -Verbose -ErrorAction Stop
             } catch {
                 Write-Host "Failed to Import a clean Start Menu Layout. Error: $_"
                 Write-Error "Failed to Import a clean Start Menu Layout. Error: $_"
             }
-	        Start-Sleep 1
-	        Remove-Item $ENV:TEMP\StartLayout.xml -Force -ErrorAction Continue
+            Start-Sleep 1
+            Remove-Item $ENV:TEMP\StartLayout.xml -Force -ErrorAction Continue
         }
 	
-	    if ($WinVer -eq 11) {
+        if ($WinVer -eq 11) {
             $W11StartLayout= '{"pinnedList":[{"packagedAppId":"windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel"},{"desktopAppLink":"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\File Explorer.lnk"}]}'
 
-	        #$W11StartLayout | Out-File "$MountDir`Users\Default\Appdata\Local\Microsoft\Windows\Shell\LayoutModification.json" -Force
-	        #if ((Test-Path -Path "$MountDir`Users\Default\Appdata\Local\Microsoft\Windows\Shell\LayoutModification.xml") -eq $true) {Remove-Item "$MountDir`Users\Default\Appdata\Local\Microsoft\Windows\Shell\LayoutModification.xml" -Force}
+            #$W11StartLayout | Out-File "$MountDir`Users\Default\Appdata\Local\Microsoft\Windows\Shell\LayoutModification.json" -Force
+            #if ((Test-Path -Path "$MountDir`Users\Default\Appdata\Local\Microsoft\Windows\Shell\LayoutModification.xml") -eq $true) {Remove-Item "$MountDir`Users\Default\Appdata\Local\Microsoft\Windows\Shell\LayoutModification.xml" -Force}
             #if((Test-Path -Path "$MountDir`Users\Default\Appdata\Local\Microsoft\Windows\Shell\DefaultLayouts.xml") -eq $true) {Remove-Item "$MountDir`Users\Default\Appdata\Local\Microsoft\Windows\Shell\DefaultLayouts.xml" -Force};
 
             if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Microsoft\PolicyManager\current\device\Start")) {  New-Item "Reg_HKLM_SOFTWARE:\Microsoft\PolicyManager\current\device\Start" -force -ea SilentlyContinue }
@@ -1326,16 +1330,16 @@ Function Clean_StartMenu {
 
         $taskbarlayout=@"
 <LayoutModificationTemplate xmlns="http://schemas.microsoft.com/Start/2014/LayoutModification" xmlns:defaultlayout="http://schemas.microsoft.com/Start/2014/FullDefaultLayout" xmlns:start="http://schemas.microsoft.com/Start/2014/StartLayout" xmlns:taskbar="http://schemas.microsoft.com/Start/2014/TaskbarLayout" Version="1">
-  <CustomTaskbarLayoutCollection PinListPlacement="Replace">
+    <CustomTaskbarLayoutCollection PinListPlacement="Replace">
     <defaultlayout:TaskbarLayout>
-      <taskbar:TaskbarPinList>
-        <taskbar:DesktopApp DesktopApplicationID="Microsoft.Windows.Explorer" />
-      </taskbar:TaskbarPinList>
+        <taskbar:TaskbarPinList>
+            <taskbar:DesktopApp DesktopApplicationID="Microsoft.Windows.Explorer" />
+        </taskbar:TaskbarPinList>
     </defaultlayout:TaskbarLayout>
-  </CustomTaskbarLayoutCollection>
+    </CustomTaskbarLayoutCollection>
 </LayoutModificationTemplate>
 "@
- 
+    
     $taskbarlayout | Out-File $ENV:SystemRoot\TaskbarLayout.xml
     if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer")) {  New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -force -ea SilentlyContinue }
     New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -Name "StartLayoutFile" -Value "$ENV:SystemRoot\TaskbarLayout.xml" -PropertyType String -Force
@@ -1360,7 +1364,7 @@ Function System_Tweaks {
     if ($decision -eq 0) {
         Write-Host "`nAttempting to block Bitlocker automatic encryption."
         if(!(Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\BitLocker")){ New-Item -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\BitLocker" -Force -ErrorAction SilentlyContinue}
-	    New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\BitLocker" -Name "PreventDeviceEncryption" -Value 1 -PropertyType Dword -Force
+        New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\BitLocker" -Name "PreventDeviceEncryption" -Value 1 -PropertyType Dword -Force
     }
     
     #Harden C:\ to stop non-administrators modifying the root C: Drive
@@ -1378,7 +1382,7 @@ Function System_Tweaks {
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
         if(!(Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\FileSystem")){ New-Item -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\FileSystem" -Force -ErrorAction SilentlyContinue}
-	    New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType Dword -Force
+        New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType Dword -Force
     }
 
     #Disable Last Access Time on Files
@@ -1396,7 +1400,7 @@ Function System_Tweaks {
     if ($decision -eq 0) {
         Write-Host "`nDisabling the storing of user activity history"
         if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge" -Force -ErrorAction SilentlyContinue}
-	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge" -Name "HideFirstRunExperience" -Value 1 -PropertyType Dword -Force
+        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge" -Name "HideFirstRunExperience" -Value 1 -PropertyType Dword -Force
     }
 
     #W11 Align taskbar
@@ -1443,7 +1447,7 @@ Function System_Tweaks {
             New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
 
             if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -force -ea SilentlyContinue};
-	        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+            New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
         }
     }
 
@@ -1485,8 +1489,8 @@ Function System_Tweaks {
     if ($decision -eq 0) {
         Write-Host "`nDisabling the storing of user activity history" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System" -Force -ErrorAction SilentlyContinue}
-	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System" -Name "PublishUserActivities" -Value 0 -PropertyType Dword -Force
-	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System" -Name "UploadUserActivities" -Value 0 -PropertyType Dword -Force
+        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System" -Name "PublishUserActivities" -Value 0 -PropertyType Dword -Force
+        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System" -Name "UploadUserActivities" -Value 0 -PropertyType Dword -Force
     }
     
     #Search Bar to Icon
@@ -1494,12 +1498,12 @@ Function System_Tweaks {
     $question = "Change the Windows Search Bar on the Taskbar to an icon? (If applicable)"
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-	    Write-Host "Setting Search Bar to Icon" -ForegroundColor White -BackgroundColor DarkBlue
-	    if(!(Test-Path -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Search")) {New-Item "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -force -ea SilentlyContinue};
-	    New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
+        Write-Host "Setting Search Bar to Icon" -ForegroundColor White -BackgroundColor DarkBlue
+        if(!(Test-Path -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Search")) {New-Item "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -force -ea SilentlyContinue};
+        New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
         
         if(!(Test-Path -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search")) {New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -force -ea SilentlyContinue};
-	    New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
+        New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
         New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarModeCache" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
 
         #Alternate method using RunOnce
@@ -1515,8 +1519,8 @@ Function System_Tweaks {
         $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
         if ($decision -eq 0) {
             Write-Host "Disabling Windows News and Interests" -ForegroundColor White -BackgroundColor DarkBlue
-	        if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds" -force -ea SilentlyContinue};
-	        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+            if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds" -force -ea SilentlyContinue};
+            New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
         }
     }
 
@@ -1527,8 +1531,8 @@ Function System_Tweaks {
         $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
         if ($decision -eq 0) {
             Write-Host "Disabling Recommended Apps in Start Menu"
-	        if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -force -ea SilentlyContinue};
-	        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -Name "HideRecommendedSection" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
+            if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -force -ea SilentlyContinue};
+            New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -Name "HideRecommendedSection" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
         }
     }
 
@@ -1539,8 +1543,8 @@ Function System_Tweaks {
         $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
         if ($decision -eq 0) {
             Write-Host "Disabling Recommended Sites in Start Menu"
-	        if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -force -ea SilentlyContinue};
-	        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -Name "HideRecommendedPersonalizedSites" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
+            if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer")) {New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -force -ea SilentlyContinue};
+            New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -Name "HideRecommendedPersonalizedSites" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
         }
     }
 
@@ -1570,10 +1574,10 @@ Function System_Tweaks {
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
         Write-Host "Showing BSOD Details instead of sad face" -ForegroundColor White -BackgroundColor DarkBlue
-	    if ((Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet") -and ($Target -eq "Online")) {
-		    if(Test-Path -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\CrashControl") {New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\CrashControl" -Name "DisplayParameters" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;}
+        if ((Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet") -and ($Target -eq "Online")) {
+            if(Test-Path -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\CrashControl") {New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\CrashControl" -Name "DisplayParameters" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;}
         } elseif ((Test-Path "Reg_HKLM_SYSTEM:\ControlSet001") -and ($Target -ne "Online")) {
-		    if(Test-Path -Path "Reg_HKLM_SYSTEM:\ControlSet001\Control\CrashControl") {New-ItemProperty -Path "Reg_HKLM_SYSTEM:\ControlSet001\Control\CrashControl" -Name "DisplayParameters" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;}
+            if(Test-Path -Path "Reg_HKLM_SYSTEM:\ControlSet001\Control\CrashControl") {New-ItemProperty -Path "Reg_HKLM_SYSTEM:\ControlSet001\Control\CrashControl" -Name "DisplayParameters" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;}
         }
     }
 
@@ -1583,8 +1587,8 @@ Function System_Tweaks {
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
         Write-Host "Verbose Startup and Shutdown Messages" -ForegroundColor White -BackgroundColor DarkBlue
-	    if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\System")) {New-Item "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\System" -force -ea SilentlyContinue};
-	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
+        if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\System")) {New-Item "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\System" -force -ea SilentlyContinue};
+        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
     }
 
 	#Disable Meet Now
@@ -1593,8 +1597,8 @@ Function System_Tweaks {
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
         Write-Host "Disabling Meet Now" -ForegroundColor White -BackgroundColor DarkBlue
-	    if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\Explorer")) {New-Item "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\Explorer" -force -ea SilentlyContinue};
-	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "HideSCAMeetNow" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
+        if(!(Test-Path -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\Explorer")) {New-Item "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\Explorer" -force -ea SilentlyContinue};
+        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "HideSCAMeetNow" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
     }
 
     #Disable Clipboard Suggestions Windows 11
@@ -1603,7 +1607,7 @@ Function System_Tweaks {
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
         Write-Host "Disabling Clipboard Suggestions"
-	    if(!(Test-Path -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard")) {  New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard" -force -ea SilentlyContinue };
+        if(!(Test-Path -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard")) {  New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard" -force -ea SilentlyContinue };
         New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard" -Name "Disabled" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
         if(!(Test-Path -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard")) {  New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard" -force -ea SilentlyContinue };
         New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard" -Name "Disabled" -Value 1 -PropertyType DWord -Force -ea SilentlyContinue;
@@ -1614,12 +1618,12 @@ Function System_Tweaks {
     $question = "Sticky Keys is an Accessibility feature that will hold down modifier keys such as Ctrl, Alt, or Shift.`nWhile useful for those that need it, it's very easy to accidentically activate it as it turns on by pressing shift 5 times in a row.`nAnswering yes will disable the shortcut.`nYou can find these options in Ease of Access if you need to change it later."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-	    Write-Host "Disabling Sticky keys shortcut" -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "Disabling Sticky keys shortcut" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path -Path "Reg_HKCU:\Control Panel\Accessibility\StickyKeys")) {New-Item "Reg_HKCU:\Control Panel\Accessibility\StickyKeys" -force -ea SilentlyContinue};
-	    New-ItemProperty -Path "Reg_HKCU:\Control Panel\Accessibility\StickyKeys" -Name "Flags" -PropertyType String -Value "506" -Force
+        New-ItemProperty -Path "Reg_HKCU:\Control Panel\Accessibility\StickyKeys" -Name "Flags" -PropertyType String -Value "506" -Force
 
         if(!(Test-Path -Path "Reg_HKDefaultUser:\Control Panel\Accessibility\StickyKeys")) {New-Item "Reg_HKDefaultUser:\Control Panel\Accessibility\StickyKeys" -force -ea SilentlyContinue};
-	    New-ItemProperty -Path "Reg_HKDefaultUser:\Control Panel\Accessibility\StickyKeys" -Name "Flags" -PropertyType String -Value "506" -Force
+        New-ItemProperty -Path "Reg_HKDefaultUser:\Control Panel\Accessibility\StickyKeys" -Name "Flags" -PropertyType String -Value "506" -Force
     }
 
     #Disable Filter keys prompt
@@ -1632,7 +1636,7 @@ Function System_Tweaks {
         New-ItemProperty -Path "Reg_HKCU:\Control Panel\Accessibility\Keyboard Response" -Name "Flags" -PropertyType String -Value "122" -Force
 
         if(!(Test-Path -Path "Reg_HKDefaultUser:\Control Panel\Accessibility\Keyboard Response")) {New-Item "Reg_HKDefaultUser:\Control Panel\Accessibility\Keyboard Response" -force -ea SilentlyContinue};
-	    New-ItemProperty -Path "Reg_HKDefaultUser:\Control Panel\Accessibility\Keyboard Response" -Name "Flags" -PropertyType String -Value "122" -Force
+        New-ItemProperty -Path "Reg_HKDefaultUser:\Control Panel\Accessibility\Keyboard Response" -Name "Flags" -PropertyType String -Value "122" -Force
     }
 
     #Disable Toggle keys prompt
@@ -1645,7 +1649,7 @@ Function System_Tweaks {
         New-ItemProperty -Path "Reg_HKCU:\Control Panel\Accessibility\ToggleKeys" -Name "Flags" -PropertyType String -Value "58" -Force
 
         if(!(Test-Path -Path "Reg_HKDefaultUser:\Control Panel\Accessibility\ToggleKeys")) {New-Item "Reg_HKDefaultUser:\Control Panel\Accessibility\ToggleKeys" -force -ea SilentlyContinue};
-	    New-ItemProperty -Path "Reg_HKDefaultUser:\Control Panel\Accessibility\ToggleKeys" -Name "Flags" -PropertyType String -Value "58" -Force
+        New-ItemProperty -Path "Reg_HKDefaultUser:\Control Panel\Accessibility\ToggleKeys" -Name "Flags" -PropertyType String -Value "58" -Force
     }
 
 	#Show all tray icons
@@ -1680,12 +1684,12 @@ Function System_Tweaks {
     $question = "Windows by default hides known file extensions eg. plain text files ending in .txt or programs ending in .exe in their names.`nWould you like to make them visible again?`nThis helps in identifying what a file is without opening it."
     $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
     if ($decision -eq 0) {
-	    Write-Host "Showing known file extensions..." -ForegroundColor White -BackgroundColor DarkBlue
+        Write-Host "Showing known file extensions..." -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {New-Item "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue};
-	    New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "HideFileExt" -PropertyType DWord -Value 0 -Force
+        New-ItemProperty -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "HideFileExt" -PropertyType DWord -Value 0 -Force
 
         if(!(Test-Path -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {New-Item "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -force -ea SilentlyContinue};
-	    New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "HideFileExt" -PropertyType DWord -Value 0 -Force
+        New-ItemProperty -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "HideFileExt" -PropertyType DWord -Value 0 -Force
     }
 
 	# Hide known file extensions
@@ -1733,9 +1737,9 @@ Function System_Tweaks {
     if ($decision -eq 0) {
         Write-Host "Disabling Fast Startup" -ForegroundColor White -BackgroundColor DarkBlue
         if ((Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet") -and ($Target -eq "Online")) {
-		    if(Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\Session Manager\Power"){New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\Session Manager\Power" -Name "HiberbootEnabled" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue}
+            if(Test-Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\Session Manager\Power"){New-ItemProperty -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\Session Manager\Power" -Name "HiberbootEnabled" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue}
         } elseif ((Test-Path "Reg_HKLM_SYSTEM:\ControlSet001") -and ($Target -ne "Online")) {
-		    if(Test-Path "Reg_HKLM_SYSTEM:\ControlSet001\Control\Session Manager\Power"){New-ItemProperty -Path "Reg_HKLM_SYSTEM:\ControlSet001\Control\Session Manager\Power" -Name "HiberbootEnabled" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue}
+            if(Test-Path "Reg_HKLM_SYSTEM:\ControlSet001\Control\Session Manager\Power"){New-ItemProperty -Path "Reg_HKLM_SYSTEM:\ControlSet001\Control\Session Manager\Power" -Name "HiberbootEnabled" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue}
         }
     }
 
@@ -1746,7 +1750,7 @@ Function System_Tweaks {
     if ($decision -eq 0) {
         Write-Host "Disabling Clipboard Cloud Sync" -ForegroundColor White -BackgroundColor DarkBlue
         if(!(Test-Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System")){ New-Item -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System" -Force -ErrorAction SilentlyContinue}
-	    New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System" -Name "AllowCrossDeviceClipboard" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+        New-ItemProperty -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\System" -Name "AllowCrossDeviceClipboard" -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
     }
 
     #Disable Clipboard History
@@ -1918,12 +1922,12 @@ Function Take-Ownership {
 Example:
 Take-Ownership -Path "Registry::HKCR\CLSID\{0D43FE01-F093-11CF-8940-00A0C9054228}" -User "Administrator" -Recurse -Verbose
 #>
-  [CmdletBinding(SupportsShouldProcess=$false)]
-  Param([Parameter(Mandatory=$true, ValueFromPipeline=$false)] [ValidateNotNullOrEmpty()] [string]$Path,
+    [CmdletBinding(SupportsShouldProcess=$false)]
+    Param([Parameter(Mandatory=$true, ValueFromPipeline=$false)] [ValidateNotNullOrEmpty()] [string]$Path,
         [Parameter(Mandatory=$true, ValueFromPipeline=$false)] [ValidateNotNullOrEmpty()] [string]$User,
         [Parameter(Mandatory=$false, ValueFromPipeline=$false)] [switch]$Recurse)
 
-  Begin {
+    Begin {
     $AdjustTokenPrivileges=@"
 using System;
 using System.Runtime.InteropServices;
