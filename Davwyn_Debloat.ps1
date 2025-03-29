@@ -106,8 +106,6 @@ if ($Target -ne "Online") {
 $Appx_RemovalList = @()
 $WindowsCapabilities_RemovalList = @()
 $Services_RemovalList = @()
-$UserHives = @()
-$UserRegs = @()
 
 
 
@@ -150,7 +148,7 @@ Function Bloatware_Appx {
         @{Item="Microsoft.PowerAutomateDesktop";Desc="Microsoft Power Automate Desktop app for creating automation workflows to perform repetitive tasks."},
         @{Item="MicrosoftWindows.CrossDevice";Desc="Enables syncing activities between Windows devices using the same Windows account. Such as files, data, notifications, and shared app experiences."},
         @{Item="Microsoft.Windows.DevHome";Desc="Tool for developers to get dashboard widgets to monitor workflows, track projects, and monitor system performance. Also to set up development environments. Not useful for non-Developers."}
-    ) | % { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
+    ) | ForEach-Object { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
     
     Write-Host "`nThe following Appx Apps are sometimes wanted. Only answer Yes if you wish to remove them." -ForegroundColor White -BackgroundColor DarkCyan
 
@@ -204,7 +202,7 @@ Function Bloatware_Appx {
         @{Item="Microsoft.BingSearch";Desc="Provides Bing web serch features in various places."},
         @{Item="Microsoft.Copilot";Desc="Windows CoPilot launcher app. Merely takes you to the website. Generally useless."}
         
-    ) | % { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
+    ) | ForEach-Object { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 
 
     Write-Host "`nThe following Appx Apps are usually not wanted." -ForegroundColor White -BackgroundColor DarkCyan
@@ -335,7 +333,7 @@ Function Bloatware_WindowsCapabilities {
         @{Item="Language.TextToSpeech";Desc="TTS or Text-To-Speech. Voices such as Microsoft SAM that reads text out loud to you. Remove it if you have no use for it."},
         #@{Item="MathRecognizer";Desc="Feature to input complex mathimaical symbols into your computer. Keep this if you need to enter in math formulas."},
         @{Item="App.StepsRecorder";Desc="An old troubleshooting tool that takes screenshots with every click of the mouse.`nThis old program only saves in an unsupported Internet Explorer format."}
-    ) | % { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
+    ) | ForEach-Object { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 
 
     Write-Host "`nThe following are Windows Capabilities you can optionally remove.`nThis cannot be undone so choose carefully." -ForegroundColor White -BackgroundColor DarkCyan 
@@ -449,7 +447,7 @@ Function Remove_Xbox {
     )
 
 
-    ForEach ($Key in $Keys) {
+    ForEach ($Key in $XboxKeys) {
         Write-Output "Removing $Key from registry"
         Remove-Item $Key -Recurse
     }
@@ -642,7 +640,7 @@ Function Bloatware_Services {
         #@{Item="DPS";Desc="Diagnostic Policy Service"},
         #@{Item="diagsvc";Desc="Diagnostic Execution Service"},
         @{Item="DusmSvc";Desc="Keeps track of Data Usage"}
-    ) | % { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
+    ) | ForEach-Object { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 
     Write-Host "`nPlease select the following Windows Services you want to disable.`nIf in doubt just answer No." -ForegroundColor White -BackgroundColor DarkCyan
 
@@ -689,8 +687,6 @@ Function Remove_Services {
 }
 
 Function Debloat_BlockBloatware {
-
-    $choices  = "&Yes", "&No"
     
     #Prevents bloatware applications from returning and removes Start Menu suggestions
     Write-Host "`nAdding Registry key to prevent bloatware apps from returning..." -ForegroundColor White -BackgroundColor DarkGreen
@@ -1254,7 +1250,7 @@ Function Remove_OneDrive {
                 } else {
                     Write-Host "System user detected. OneDriveSetup.exe /Uninstall is not nessary for this user. Skipping..."
                 }
-                Sleep 2
+                Start-Sleep 2
                 }
             takeown /f $MountDir`Windows\System32\OneDriveSetup.exe
             icacls $MountDir`Windows\System32\OneDriveSetup.exe /grant Administrators:F /C
@@ -1268,7 +1264,7 @@ Function Remove_OneDrive {
                 } else {
                     Write-Host "System user detected. OneDriveSetup.exe /Uninstall is not nessary for this user. Skipping..."
                 }
-                Sleep 2
+                Start-Sleep 2
             }
             takeown /f $MountDir`Windows\SysWOW64\OneDriveSetup.exe
             icacls $MountDir`Windows\SysWOW64\OneDriveSetup.exe /grant Administrators:F /C
@@ -1839,7 +1835,6 @@ Function Mount_Registry {
         if (!(Get-PSDrive -Name Reg_HKCR -ErrorAction SilentlyContinue)) {New-PSDrive -PSProvider Registry -Root HKEY_CLASSES_ROOT -Name Reg_HKCR -Scope Global -ErrorAction Stop}
 
     } elseif ((Test-Path $Target -PathType Container) -and (Test-Path "$Target`\Windows")) {
-        $MountDir = $Target
         #if (!(Get-PSDrive -Name Reg_HKLM_COMPONENTS -ErrorAction SilentlyContinue)) {Import-RegistryHive -File "$Target`\Windows\System32\config\COMPONENTS" -Key "HKLM\TEMP_HKLM_COMPONENTS" -Name Reg_HKLM_COMPONENTS -ErrorAction Stop}
         if (!(Get-PSDrive -Name Reg_HKLM_SOFTWARE -ErrorAction SilentlyContinue)) {Import-RegistryHive -File "$Target`\Windows\System32\config\SOFTWARE" -Key "HKLM\TEMP_HKLM_SOFTWARE" -Name Reg_HKLM_SOFTWARE -ErrorAction Stop}
         if (!(Get-PSDrive -Name Reg_HKLM_SYSTEM -ErrorAction SilentlyContinue)) {Import-RegistryHive -File "$Target`\Windows\System32\config\SYSTEM" -Key "HKLM\TEMP_HKLM_SYSTEM" -Name Reg_HKLM_SYSTEM -ErrorAction Stop}
@@ -1864,7 +1859,7 @@ Function UnMount_Registry {
             Break
         }
         $UnmountAttempts++
-        Sleep 2
+        Start-Sleep 2
         if ($Target -eq "Online") {
             #UnMount Registry Roots
             if (Get-PSDrive -Name Reg_HKCR -ErrorAction SilentlyContinue) {Remove-PSDrive -Name Reg_HKCR}
@@ -2179,4 +2174,4 @@ if ($Target -eq "Online") {
 }
 
 Write-Host "`nDebloat, Privacy, and cleanup complete!" -ForegroundColor White -BackgroundColor DarkCyan
-Sleep 5
+Start-Sleep 5
