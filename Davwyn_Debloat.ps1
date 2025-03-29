@@ -1144,15 +1144,15 @@ Function Remove_Edge {
             Remove-Item "C:\Users\Public\Desktop\Microsoft Edge.lnk" -Force
         }
 
-        if (Test-Path "Reg_HKLM_SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\EdgeUpdate") {
-            Remove-Item "Reg_HKLM_SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\EdgeUpdate" -Force
+        if (Test-Path "Reg_HKLM_SOFTWARE:\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\EdgeUpdate") {
+            Remove-Item "Reg_HKLM_SOFTWARE:\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\EdgeUpdate" -Force
         }
 
-        if((Test-Path -Path "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge") -ne $true) {  New-Item "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge" -force -ea SilentlyContinue };
-        if((Test-Path -Path "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\Main") -ne $true) {  New-Item "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\Main" -force -ea SilentlyContinue };
-        if((Test-Path -Path "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\TabPreloader") -ne $true) {  New-Item "Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\TabPreloader" -force -ea SilentlyContinue };
-        New-ItemProperty -Path 'Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\Main' -Name 'AllowPrelaunch' -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
-        New-ItemProperty -Path 'Reg_HKLM_SOFTWARE\Policies\Microsoft\Microsoft Edge\TabPreloader' -Name 'AllowTabPreloading' -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+        if((Test-Path -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Microsoft Edge") -ne $true) {  New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Microsoft Edge" -force -ea SilentlyContinue };
+        if((Test-Path -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Microsoft Edge\Main") -ne $true) {  New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Microsoft Edge\Main" -force -ea SilentlyContinue };
+        if((Test-Path -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Microsoft Edge\TabPreloader") -ne $true) {  New-Item "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Microsoft Edge\TabPreloader" -force -ea SilentlyContinue };
+        New-ItemProperty -Path 'Reg_HKLM_SOFTWARE:\Policies\Microsoft\Microsoft Edge\Main' -Name 'AllowPrelaunch' -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
+        New-ItemProperty -Path 'Reg_HKLM_SOFTWARE:\Policies\Microsoft\Microsoft Edge\TabPreloader' -Name 'AllowTabPreloading' -Value 0 -PropertyType DWord -Force -ea SilentlyContinue;
         
         $Script:Disable_EdgePDF = $true
         Write-Host "`nMicrosoft Edge Browser disabled." -ForegroundColor White -BackgroundColor DarkCyan
