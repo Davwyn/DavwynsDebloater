@@ -449,7 +449,7 @@ Function Remove_Xbox {
 
     ForEach ($Key in $XboxKeys) {
         Write-Output "Removing $Key from registry"
-        Remove-Item $Key -Recurse
+        Remove-Item $Key -Recurse -ErrorAction SilentlyContinue
     }
 
     #Disable Game DVR
@@ -776,7 +776,7 @@ Function Remove_BloatwareReg {
     ForEach ($Key in $Keys) {
         if (Test-Path $key) {
             Write-Output "Removing from registry $Key"
-            Remove-Item $Key -Recurse
+            Remove-Item $Key -Recurse -ErrorAction SilentlyContinue
         }
     }
     Write-Host "`nLeftover bloatware registry keys removed." -ForegroundColor White -BackgroundColor DarkCyan
