@@ -165,51 +165,137 @@ function Read-PromptUser {
         [string]$SuggestedAction,
         [string]$DefaultResponse,
         [string[]]$ValidResponses,
-        [string]$HelpText
+        [string]$InfoText
     )
-    
-    # Add Suggestion Text if provided
+
+    # Add Suggested Action if provided
     if (![string]::IsNullOrWhiteSpace($SuggestedAction)) {
         $Message += "`n`n[ Suggested Action: $SuggestedAction ]`n"
     }
-    # Add help options if help text is provided
-    $workingResponses = $ValidResponses.Clone()
-    if ($HelpText) {
-        $workingResponses += @("Help")
+
+    # Filter out reserved options we add explicitly
+    $filteredResponses = @()
+    foreach ($r in $ValidResponses) {
+        if ($null -ne $r -and $r -ne '' -and $r -notin @('Info', 'Skip')) {
+            $filteredResponses += $r
+        }
     }
 
-    $choices = @()
-    foreach ($response in $workingResponses) {
-        $choice = New-Object System.Management.Automation.Host.ChoiceDescription "&$response", $response
-        $choices += $choice
+    # Build working responses and menu
+    $workingResponses = @()
+    $menuLines = @()
+    $indexToResponse = @{}
+
+    # Numbered options
+    for ($i = 0; $i -lt $filteredResponses.Count; $i++) {
+        $num = $i + 1
+        $menuLines += ("{0}) {1}" -f $num, $filteredResponses[$i])
+        $workingResponses += $filteredResponses[$i]
+        $indexToResponse["$num"] = $filteredResponses[$i]  # map string of number to response
     }
 
-    # Calculate default index
-    $defaultIndex = if ($DefaultResponse) {
-        [array]::IndexOf($workingResponses, $DefaultResponse)
-    } else {
-        -1
+    # Always add Skip
+    $menuLines += "S) Skip"
+    $workingResponses += "Skip"
+
+    # Add Info if provided
+    if ($InfoText) {
+        $menuLines += "I) Info"
+        $workingResponses += "Info"
     }
 
+    # Determine default token and how we'll render it
+    $defaultToken = $null
+    if ($DefaultResponse) {
+        # Only allow defaults that exist in our working set (case-insensitive)
+        foreach ($wr in $workingResponses) {
+            if ($wr -and ($wr.ToString().ToLower() -eq $DefaultResponse.ToLower())) {
+                $defaultToken = $wr
+                break
+            }
+        }
+    }
+
+    # Compose prompt header
+    Write-Host ("`n{0}" -f $Title) -ForegroundColor Cyan
+    if ($Message) { Write-Host $Message }
+
+    # Helper to show the menu with an optional default hint
+    function Show-Menu {
+        param([string]$DefaultHint)
+        foreach ($line in $menuLines) { Write-Host $line }
+        if ($DefaultHint) {
+            Write-Host ("[Press Enter for default: {0}]" -f $DefaultHint) -ForegroundColor DarkGray
+        } else {
+            Write-Host "[Select a number, 'S' to skip, or 'I' for info]" -ForegroundColor DarkGray
+        }
+    }
+
+    # Main input loop
     do {
-        $result = $host.ui.PromptForChoice($Title, $Message, [System.Management.Automation.Host.ChoiceDescription[]]$choices, $defaultIndex)
-        $response = $workingResponses[$result]
+        # Show menu (include default hint if we have one)
+        Show-Menu -DefaultHint:$defaultToken
 
-        if ($HelpText -and $response -match '^(\?|H|Help)$') {
-            Write-Host "`n$HelpText`n" -ForegroundColor Yellow
-            $response = $null
-        }
-        elseif ($response -notin $ValidResponses) {
-            Write-Host "Invalid response. Please choose from: $($ValidResponses -join ', ')" -ForegroundColor Red
-            $response = $null
-        }
-        elseif (!$DefaultResponse -and !$response) {
-            Write-Host "A response is required. Please choose from: $($ValidResponses -join ', ')" -ForegroundColor Red
-            $response = $null
-        }
-    } while (!$response)
+        # Read user input (trim to simplify matching)
+        $UserChoice = Read-Host "Enter choice"
 
-    return $response
+        # Handle Enter for default when available
+        if ([string]::IsNullOrWhiteSpace($UserChoice)) {
+            if ($defaultToken) {
+                if ($defaultToken -eq 'Info') {
+                    Write-Host "`n$InfoText`n" -ForegroundColor Yellow
+                    continue
+                } elseif ($defaultToken -eq 'Skip') {
+                    Write-Host "`"$Title`" skipped." -ForegroundColor Cyan
+                    Start-Sleep 1
+                    return 'Skip'
+                } else {
+                    Write-Host "`"$Title`" $defaultToken selected." -ForegroundColor Cyan
+                    Start-Sleep 1
+                    return $defaultToken
+                }
+            } else {
+                Write-Host "No default available. Please choose a valid option." -ForegroundColor Red
+                continue
+            }
+        }
+
+        # Normalize input
+        $UserChoiceNorm = $UserChoice.Trim()
+
+        # Info processing
+        if ($UserChoiceNorm -match '^(I|i)$') {
+            if ($InfoText) {
+                Write-Host "`n$InfoText`n" -ForegroundColor Yellow
+            } else {
+                Write-Host "Info is not available." -ForegroundColor Yellow
+            }
+            continue
+        }
+
+        # Skip processing
+        if ($UserChoiceNorm -match '^(S|s)$') {
+            Write-Host ("`"{0}`" skipped." -f $Title) -ForegroundColor Cyan
+            return 'Skip'
+        }
+
+        # Numeric selection processing
+        if ($UserChoiceNorm -match '^\d+$') {
+            # Verify number is within range
+            if ($indexToResponse.ContainsKey($UserChoiceNorm)) {
+                Write-Host "`"$Title`" $($indexToResponse[$UserChoiceNorm]) selected." -ForegroundColor Cyan
+                Start-Sleep 1
+                return $indexToResponse[$UserChoiceNorm]
+            } else {
+                Write-Host ("Invalid number '{0}'. Please choose between 1 and {1} or S for Skip." -f $UserChoiceNorm, $filteredResponses.Count) -ForegroundColor Red
+                continue
+            }
+        }
+
+        # Anything else is invalid
+        Write-Host ("Invalid entry '{0}'. Please select a number, 'S' to Skip, or 'I' for Info." -f $UserChoiceNorm) -ForegroundColor Red
+
+    } while ($true)
 }
 
 function Write-Header {
@@ -478,6 +564,8 @@ Function Mount-RegistryHives {
 
 Function Dismount-RegistryHives {
     Write-Host "`nPlease wait`nUnmounting the registry..." -ForegroundColor Yellow
+    # Garbage Collect to free any handles to registry hives
+    [System.GC]::Collect()
 
     $RegDrives = @("Reg_HKCR","Reg_HKCU","Reg_HKLM_SOFTWARE","Reg_HKLM_SYSTEM","Reg_HKDefaultUser")
     $UnmountAttempts = 1
@@ -729,12 +817,14 @@ function Get-BloatRemovalSelection {
         Write-Host "`n$itemName" -ForegroundColor Yellow
         Write-Host "$itemDesc" -ForegroundColor Cyan
         if ($itemSuggest) { Write-Host "$ItemSuggest" -ForegroundColor Green }
-        $response = Read-PromptUser -Title "Remove Bloatware Item" -Message "Do you want to remove the following item?" -SuggestedAction "$($bloatItem.Suggested)" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will add this item to the removal list to be uninstalled. Selecting 'No' will skip this item."
-        if ($response -eq "Yes") {
+        if ($Auto) {
+            $response = "Remove"
+        } else {    
+            $response = Read-PromptUser -Title "Remove Bloatware Item" -Message "Do you want to remove the following item?" -SuggestedAction "$($bloatItem.Suggested)" -DefaultResponse "Skip" -ValidResponses @("Remove") -InfoText "Selecting 'Remove' will add this item to the removal list to be uninstalled. Selecting 'Skip' will skip this item."
+        }
+        if ($response -eq "Remove") {
             $RemovalList += $itemName
             Write-Host "`n$itemName added to removal list.`n" -ForegroundColor Green
-        } else {
-            Write-Host "`n$itemName skipped.`n" -ForegroundColor Magenta
         }
     }
     return $RemovalList
@@ -752,11 +842,11 @@ function Get-AppxSponsoredRemovalSelection {
     }
     if ($SponsoredInstalled) {
         if ($Auto) {
-            $response = "Yes"
+            $response = "Remove"
         } else {
-            $response = Read-PromptUser -Title "Remove Sponsored Appx Apps" -Message "The following sponsored apps were detected as installed:`n$($SponsoredInstalled -join ", ")`nDo you want to remove ALL these sponsored apps?" -DefaultResponse "Yes" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will add ALL these sponsored apps to the removal list to be uninstalled. Selecting 'No' will skip removing these apps."
+            $response = Read-PromptUser -Title "Remove Sponsored Appx Apps" -Message "The following sponsored apps were detected as installed:`n$($SponsoredInstalled -join ", ")`nDo you want to remove ALL these sponsored apps?" -DefaultResponse "Remove" -ValidResponses @("Remove") -InfoText "Selecting 'Remove' will add ALL these sponsored apps to the removal list to be uninstalled. Selecting 'Skip' will skip removing these apps."
         }
-        if ($response -eq "Yes") {$Script:Appx_RemovalList += $SponsoredInstalled}
+        if ($response -eq "Remove") {$Script:Appx_RemovalList += $SponsoredInstalled}
     } else {
         Write-Host "`nIt seems you have no sponsored apps installed." -ForegroundColor Green
     }
@@ -809,8 +899,8 @@ function Get-BloatServicesSelection {
             Write-Host "`n$itemName" -ForegroundColor Yellow
             Write-Host "$itemDesc" -ForegroundColor Cyan
             if ($itemSuggest) { Write-Host "$ItemSuggest" -ForegroundColor Green }
-            $response = Read-PromptUser -Title "Disable Bloatware Service" -Message "Do you want to disable the following service?" -SuggestedAction "$($bloatItem.Suggested)" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will add this service to the removal list to be disabled. Selecting 'No' will skip this service."
-            if ($response -eq "Yes") {
+            $response = Read-PromptUser -Title "Disable Bloatware Service" -Message "Do you want to disable the following service?" -SuggestedAction "$($bloatItem.Suggested)" -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will add this service to the removal list to be disabled. Selecting 'Skip' will skip this service."
+            if ($response -eq "Disable") {
                 $RemovalList += $itemName
                 Write-Host "`n$itemName added to removal list.`n" -ForegroundColor Green
             } else {
@@ -987,11 +1077,11 @@ function Bloatware_Xbox {
         "Reg_HKCR:\Extensions\ContractId\Windows.Protocol\PackageId\Microsoft.XboxGameCallableUI_1000.16299.15.0_neutral_neutral_cw5n1h2txyewy"
     )
     if ($Auto) {
-        $response = "Yes"
+        $response = "Remove"
     } else {
-        $response = Read-PromptUser -Title "Remove Xbox Appx Packages" -Message "`nDo you want to remove ALL Xbox apps?" -SuggestedAction "Remove only if you don't play video games using Xbox features or Xbox Controllers" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' remove Xbox apps. Selecting 'No' will skip removing these apps."
+        $response = Read-PromptUser -Title "Xbox Appx Packages" -Message "`nDo you want to remove ALL Xbox apps?`nWarning: Removing Xbox features can break non-Xbox games that use Xbox functions such as game controller features." -SuggestedAction "Skip, ONLY remove if you have no intention to play video games. Some games may rely on Xbox components." -DefaultResponse "Skip" -ValidResponses @("Remove") -InfoText "Selecting 'Remove' will remove Xbox apps and functionality. Selecting 'Skip' will skip removing these apps."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Remove") {
         if ($InstalledXboxPackages -gt 0) { Remove-AppxBloat -RemovalList $InstalledXboxPackages}
         Remove-BloatServices -RemovalList $XboxServices
         Write-Host "`nRemoving Xbox related Registry Keys..." -ForegroundColor Green
@@ -1042,11 +1132,11 @@ function Bloatware_Teams {
         }
     }
     if ($Auto) {
-        $response = "Yes"
+        $response = "Remove"
     } else {
-        $response = Read-PromptUser -Title "Remove Microsoft Teams" -Message "`nDo you want to remove Microsoft Teams Apps?" -SuggestedAction "Yes, remove unless you need Teams for Work or School. You can always reinstall it." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will remove Microsoft Teams apps. Selecting 'No' will skip removing these apps."
+        $response = Read-PromptUser -Title "Microsoft Teams" -Message "`nDo you want to remove Microsoft Teams Apps?" -SuggestedAction "Remove, unless you need Teams for Work or School. You can always reinstall it." -DefaultResponse "Skip" -ValidResponses @("Remove") -InfoText "Selecting 'Remove' will remove Microsoft Teams apps. Selecting 'Skip' will skip removing these apps."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Remove") {
         if ($InstalledTeamsPackages -gt 0) { Remove-AppxBloat -RemovalList $InstalledTeamsPackages }
         Write-Host "`nSetting Registry settings to block Teams/Chat from reappearing..." -ForegroundColor White
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Chat" -Name "ChatIcon" -Value 3 -PropertyType DWord
@@ -1070,20 +1160,18 @@ function Bloatware_CortanaCopilot {
     Write-Header -Text "Cortana & Copilot Removal Selection"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Remove"
     } else {
-        $response = Read-PromptUser -Title "Remove Cortana & Copilot" -Message "`nDo you want to remove Cortana and Copilot Apps from the system?" -SuggestedAction "Yes, remove if you don't want AI Assistant Apps" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will attempt to remove Cortana and Copilot. Selecting 'No' will not remove apps."
+        $response = Read-PromptUser -Title "Cortana & Copilot" -Message "`nDo you want to remove Cortana and Copilot Apps from the system?" -SuggestedAction "Remove, if you don't want AI Assistant Apps" -DefaultResponse "Skip" -ValidResponses @("Remove") -InfoText "Selecting 'Remove' will attempt to remove Cortana and Copilot. Selecting 'Skip' will not remove apps."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Remove") {
         # Cortana Removal
         Write-Host "`nRemoving/Disabling Cortana..." -ForegroundColor White -BackgroundColor DarkGreen
         Remove-AppxBloat -RemovalList "Microsoft.549981C3F5F10"
         Write-Host "`nSetting Registry settings to block Cortana from reappearing..."
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0 -PropertyType DWord
-        Write-Host "`nDisabling Cortana and Online Start Menu Search..."
-        Set-RegistryValue -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -Value 0 -PropertyType Dword
+        Write-Host "`nDisabling Cortana..."
         Set-RegistryValue -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" -Name "CortanaConsent" -Value 0 -PropertyType Dword
-        Set-RegistryValue -Path "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -Value 0 -PropertyType Dword
         Set-RegistryValue -Path "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" -Name "CortanaConsent" -Value 0 -PropertyType Dword
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "DisableWebSearch" -Value 1 -PropertyType Dword
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0 -PropertyType DWord
@@ -1109,11 +1197,11 @@ function Bloatware_CopilotRecall {
     Write-Header -Text "CoPilot Recall Removal Selection"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Remove"
     } else {
-        $response = Read-PromptUser -Title "Remove Copilot Recall" -Message "`nDo you want to remove Copilot Recall App from the system?`nRecall takes screenshots of your screen and keylogs your activities. Considered a highly exploitable service and heavy bloat." -SuggestedAction "Yes, remove for Privacy and Performance." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will attempt to remove Copilot Recall. Selecting 'No' will not remove the app."
+        $response = Read-PromptUser -Title "Copilot Recall" -Message "`nDo you want to remove Copilot Recall App from the system?`nRecall takes screenshots of your screen and keylogs your activities. Considered a highly exploitable service and heavy bloat." -SuggestedAction "Remove, for Privacy and Performance." -DefaultResponse "Skip" -ValidResponses @("Remove") -InfoText "Selecting 'Remove' will attempt to remove Copilot Recall. Selecting 'Skip' will not remove the app."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Remove") {
         Write-Host "`nRemoving Copilot Recall..." -ForegroundColor White -BackgroundColor DarkGreen
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\WindowsAI" -Name "DisableAIDataAnalysis" -PropertyType Dword -Value 1
         Set-RegistryValue -Path "Reg_HKCU:\Software\Policies\Microsoft\Windows\WindowsAI" -Name "DisableAIDataAnalysis" -PropertyType Dword -Value 1
@@ -1134,11 +1222,11 @@ function Bloatware_MicrosoftEdge {
     Write-Header -Text "Microsoft Edge Removal Selection"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Remove"
     } else {
-        $response = Read-PromptUser -Title "Remove Microsoft Edge" -Message "`nDo you want to remove Microsoft Edge Browser from the system?" -SuggestedAction "Yes, remove if you prefer using a different web browser." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will attempt to remove Microsoft Edge. Selecting 'No' will not remove the browser."
+        $response = Read-PromptUser -Title "Microsoft Edge" -Message "`nDo you want to remove Microsoft Edge Browser from the system?" -SuggestedAction "Remove, if you prefer using a different web browser." -DefaultResponse "Skip" -ValidResponses @("Remove") -InfoText "Selecting 'Remove' will attempt to remove Microsoft Edge. Selecting 'Skip' will not remove the browser."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Remove") {
         Write-Host "`nRemoving Microsoft Edge..." -ForegroundColor White -BackgroundColor DarkGreen
         # Edge Removal using installer
         if ($Target -eq "Online") {
@@ -1193,7 +1281,7 @@ function Bloatware_MicrosoftEdge {
         Set-RegistryValue -Path 'Reg_HKLM_SOFTWARE:\Policies\Microsoft\Microsoft Edge\TabPreloader' -Name 'AllowTabPreloading' -Value 0 -PropertyType DWord
         Write-Host "`nMicrosoft Edge removal process completed." -ForegroundColor White -BackgroundColor DarkCyan
     }
-    return $response
+    $Script:EdgeRemoveResponse = $response
 }
 
 function Bloatware_StartMenuTaskbar {
@@ -1203,11 +1291,11 @@ function Bloatware_StartMenuTaskbar {
     Write-Header -Text "Clean Start Menu and Taskbar"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Clean"
     } else {
-        $response = Read-PromptUser -Title "Clean Start Menu" -Message "`nDo you want to clean the Start Menu by removing default pinned items for new users?`nWhen cleaned only Settings and Explorer will be pinned." -SuggestedAction "Yes, clean the Start Menu to make it less distracting for new users." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will remove pinned items from the Start Menu. Selecting 'No' will keep the default Start Menu settings."
+        $response = Read-PromptUser -Title "Clean Start Menu" -Message "`nDo you want to clean the Start Menu by removing default pinned items for new users?`nWhen cleaned only Settings and Explorer will be pinned." -SuggestedAction "Clean the Start Menu to make it less distracting for new users." -DefaultResponse "Skip" -ValidResponses @("Clean") -InfoText "Selecting 'Clean' will remove pinned items from the Start Menu. Selecting 'Skip' will not change settings."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Clean") {
         Write-Host "`nSetting Registry settings to clean Start Menu..." -ForegroundColor White -BackgroundColor DarkGreen
         if ($TargetWindowsVersion -eq "10") {
             $startlayout=@"
@@ -1265,14 +1353,14 @@ function Bloatware_StartMenuSuggestedApps {
         [switch]$Auto
     )
     if ($TargetWindowsVersion -ne "11+") { return }
-    Write-Header -Text "Hide Suggested Apps in Start Menu"
+    Write-Header -Text "Disable Suggested Apps in Start Menu"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Start Menu Suggested Apps" -Message "`nDo you want to disable Suggested Apps in the Start Menu?`nSuggested apps can be distracting and may slow down Start Menu performance." -SuggestedAction "Yes, disable Suggested Apps for a cleaner Start Menu experience." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to disable Suggested Apps. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Start Menu Suggested Apps" -Message "`nDo you want to disable Suggested Apps in the Start Menu?`nSuggested apps can be distracting and may slow down Start Menu performance." -SuggestedAction "Disable Suggested Apps for a cleaner Start Menu experience." -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Hide' will set registry to disable Suggested Apps. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Write-Host "`nSetting Registry settings to disable Suggested Apps..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -Name "HideRecommendedSection" -Value 1 -PropertyType DWord
@@ -1285,14 +1373,14 @@ function Bloatware_StartMenuSuggestedSites {
         [switch]$Auto
     )
     if ($TargetWindowsVersion -ne "11+") { return }
-    Write-Header -Text "Hide Suggested Websites in Start Menu"
+    Write-Header -Text "Disable Suggested Websites in Start Menu"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Start Menu Suggested Websites" -Message "`nDo you want to disable Suggested Websites in the Start Menu?`nSuggested Websites can be distracting and may slow down Start Menu performance." -SuggestedAction "Yes, disable Suggested Websites for a cleaner Start Menu experience." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to disable Suggested Websites. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Disable Start Menu Suggested Websites" -Message "`nDo you want to disable Suggested Websites in the Start Menu?`nSuggested Websites can be distracting and may slow down Start Menu performance." -SuggestedAction "Disable Suggested Websites for a cleaner Start Menu experience." -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will set registry to disable Suggested Websites. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Write-Host "`nSetting Registry settings to disable Suggested Websites..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Explorer" -Name "HideRecommendedSection" -Value 1 -PropertyType DWord
@@ -1307,11 +1395,11 @@ function Bloatware_Widgets {
     Write-Header -Text "Disable Widgets"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Widgets" -Message "`nDo you want to disable Widgets from the Taskbar?`nDisabling widgets can improve system performance.`nWidgets are items like Weather, News, Stocks, etc. that sit on the Taskbar." -SuggestedAction "Yes, remove if you don't use Widgets." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to disable Widgets. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Widgets" -Message "`nDo you want to disable Widgets from the Taskbar?`nDisabling widgets can improve system performance.`nWidgets are items like Weather, News, Stocks, etc. that sit on the Taskbar." -SuggestedAction "Disable, if you don't use Widgets." -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will set registry to disable Widgets. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Write-Host "`nSetting Registry settings to disable Widgets..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -PropertyType DWord
@@ -1335,11 +1423,11 @@ function Bloatware_BlockBloatReinstall {
     Write-Header -Text "Block Bloatware"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Block"
     } else {
-        $response = Read-PromptUser -Title "Block Bloatware Reinstallation and Bloatware Keys" -Message "`nDo you want to apply registry settings to block unwanted Consumer Features and Suggested Apps from reinstalling?" -SuggestedAction "Yes, block bloatware from reinstalling." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will apply registry settings to block bloatware reinstallation. Selecting 'No' will skip this step."
+        $response = Read-PromptUser -Title "Block Bloatware Reinstallation and Bloatware Keys" -Message "`nDo you want to apply registry settings to block unwanted Consumer Features and Suggested Apps from reinstalling?" -SuggestedAction "Block bloatware from reinstalling." -DefaultResponse "Skip" -ValidResponses @("Block") -InfoText "Selecting 'Block' will apply registry settings to block bloatware reinstallation. Selecting 'Skip' will skip this step."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Block") {
         Write-Host "`nApplying registry settings to block unwanted Consumer Features and Suggested Apps..." -ForegroundColor White -BackgroundColor DarkGreen
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\CloudContent" -Name "DisableWindowsConsumerFeatures" -Value 1 -PropertyType DWord
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\CloudContent" -Name "DisableSoftLanding" -Value 1 -PropertyType DWord
@@ -1411,19 +1499,19 @@ function Bloatware_AdsInExplorer {
     param (
         [switch]$Auto
     )
-    Write-Header -Text "Block Ads"
+    Write-Header -Text "Block Ads from File Explorer"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Block"
     } else {
-        $response = Read-PromptUser -Title "Remove Ads from File Explorer" -Message "`nDo you want to remove ads and suggestions from File Explorer?" -SuggestedAction "Yes, for better privacy and less distractions." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to remove ads from File Explorer. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Ads from File Explorer" -Message "`nDo you want to remove ads and suggestions from File Explorer?" -SuggestedAction "Block, for better privacy and less distractions." -DefaultResponse "Skip" -ValidResponses @("Block") -InfoText "Selecting 'Block' will set registry to remove ads from File Explorer. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Block") {
         Write-Host "`nSetting Registry settings to remove ads from File Explorer..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowSyncProviderNotifications" -Value 0 -PropertyType DWord
         Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowSyncProviderNotifications" -Value 0 -PropertyType DWord
-        Write-Host "`nAds removed from File Explorer." -ForegroundColor White -BackgroundColor DarkCyan
+        Write-Host "`nAds blocked from File Explorer." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
@@ -1431,14 +1519,14 @@ function Bloatware_MicrosoftMaps {
     param (
         [switch]$Auto
     )
-    Write-Header -Text "Disable Microsoft Maps"
+    Write-Header -Text "Remove Microsoft Maps"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Remove"
     } else {
-        $response = Read-PromptUser -Title "Remove Microsoft Maps" -Message "`nDo you want to remove the Microsoft Maps app from the system?" -SuggestedAction "Yes, remove if you don't use Microsoft Maps app" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will remove Microsoft Maps. Selecting 'No' will skip removing this app."
+        $response = Read-PromptUser -Title "Microsoft Maps" -Message "`nDo you want to remove the Microsoft Maps app from the system?" -SuggestedAction "Remove if you don't use Microsoft Maps app" -DefaultResponse "Skip" -ValidResponses @("Remove") -InfoText "Selecting 'Remove' will remove Microsoft Maps. Selecting 'Skip' will skip removing this app."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Remove") {
         Remove-AppxBloat -RemovalList "Microsoft.WindowsMaps"
         Remove-BloatServices -RemovalList "MapsBroker"
         Write-Host "`nDisabling Auto Map Downloading/Updating"
@@ -1455,11 +1543,11 @@ function Bloatware_RemoteDesktopServices {
     Write-Header -Text "Disable Remote Desktop Services"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Remote Desktop Services" -Message "`nDo you want to disable Remote Desktop Services hosting?`nThis will prevent you from allowing other computers from connecting to your PC using Microsoft RDP and other services. It might also affect Quick Assist" -SuggestedAction "Yes, remove if you don't use Remote Desktop" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will remove Remote Desktop Services. Selecting 'No' will skip."
+        $response = Read-PromptUser -Title "Remote Desktop Services" -Message "`nDo you want to disable Remote Desktop Services hosting?`nThis will prevent you from allowing other computers from connecting to your PC using Microsoft RDP and other services. It might also affect Quick Assist" -SuggestedAction "Disable, remove if you don't use Remote Desktop" -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will remove Remote Desktop Services. Selecting 'Skip' will skip."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         $RemoteDesktopServices = @(
             "UmRdpService"
             "TermService"
@@ -1479,11 +1567,11 @@ function Bloatware_SmartCardServices {
     Write-Header -Text "Disable Smart Card Services"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Smart Card Services" -Message "`nDo you want to disable Smart Card Services?`nThis will prevent the use of physical smart cards for authentication on this PC.`nTypically home users don't use SmartCard devices to log into their PCs." -SuggestedAction "Yes, remove if you don't use Smart Cards" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will remove Smart Card Services. Selecting 'No' will skip."
+        $response = Read-PromptUser -Title "Smart Card Services" -Message "`nDo you want to disable Smart Card Services?`nThis will prevent the use of physical smart cards for authentication on this PC.`nTypically home users don't use SmartCard devices to log into their PCs." -SuggestedAction "Disable, if you don't use Smart Cards" -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will remove Smart Card Services. Selecting 'Skip' will skip."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         $SmartCardServices = @(
             "SCPolicySvc"
             "ScDeviceEnum"
@@ -1501,11 +1589,11 @@ function Bloatware_BingStartMenuSearch {
     Write-Header -Text "Disable Bing Search in Start Menu"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Bing Search in Start Menu" -Message "`nDo you want to disable Bing from doing online searches when searching in the Start Menu?" -SuggestedAction "Yes, for privacy and performance" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will disable Bing search integration in the Start Menu. Selecting 'No' will leave it enabled."
+        $response = Read-PromptUser -Title "Bing Search in Start Menu" -Message "`nDo you want to disable Bing from doing online searches when searching in the Start Menu?" -SuggestedAction "Disable, for privacy and performance" -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will disable Bing search integration in the Start Menu. Selecting 'Skip' will leave it enabled."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
     Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0 -PropertyType DWord
     Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "EnableDynamicContentInWSB" -Value 0 -PropertyType DWord
     Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "DisableWebSearch" -Value 1 -PropertyType DWord
@@ -1516,6 +1604,8 @@ function Bloatware_BingStartMenuSearch {
     Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "AllowSearchHighlights" -Value 0 -PropertyType DWord
     Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "DoNotUseWebResults" -Value 1 -PropertyType DWord
     Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Search" -Name "BingSearchEnabled" -Value 0 -PropertyType DWord
+    Set-RegistryValue -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -Value 0 -PropertyType Dword
+    Set-RegistryValue -Path "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -Value 0 -PropertyType Dword
     }
 }
 
@@ -1526,11 +1616,11 @@ function Bloatware_OneDrive {
     Write-Header -Text "Remove OneDrive"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Remove"
     } else {
-        $response = Read-PromptUser -Title "Remove OneDrive" -Message "`nDo you want to remove OneDrive from the system?" -SuggestedAction "Yes, remove if you don't use OneDrive for cloud storage" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will remove OneDrive. Selecting 'No' will skip removing this app."
+        $response = Read-PromptUser -Title "OneDrive" -Message "`nDo you want to remove OneDrive from the system?" -SuggestedAction "Remove, if you don't use OneDrive for cloud storage" -DefaultResponse "Skip" -ValidResponses @("Remove") -InfoText "Selecting 'Remove' will remove OneDrive. Selecting 'Skip' will skip removing this app."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Remove") {
         Remove-AppxBloat -RemovalList "Microsoft.OneDrive"
         Write-Host "`nSetting Registry settings to block OneDrive from reappearing..." -ForegroundColor White
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\OneDrive" -Name "DisableFileSyncNGSC" -Value 1 -PropertyType DWord
@@ -1581,11 +1671,11 @@ function Tweak_DisableFastStartup {
     Write-Header -Text "Disable Fast Startup"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Fast Startup" -Message "`nDo you want to disable Fast Startup?`nFast Startup can cause issues with some hardware and drivers during boot." -SuggestedAction "Yes, disable Fast Startup for better system stability." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to disable Fast Startup. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Fast Startup" -Message "`nDo you want to disable Fast Startup?`nFast Startup can cause issues with some hardware and drivers during boot." -SuggestedAction "Disable, for better system stability." -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will set registry to disable Fast Startup. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Write-Host "`nSetting Registry settings to disable Fast Startup..." -ForegroundColor White -BackgroundColor DarkGreen
         if ($Target -eq "Online") {
             Set-RegistryValue -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\Session Manager\Power" -Name "HiberbootEnabled" -Value 0 -PropertyType Dword
@@ -1603,11 +1693,11 @@ function Tweak_BlockAutomaticBitlocker {
     Write-Header -Text "Block Automatic Bitlocker Encryption"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Block"
     } else {
-        $response = Read-PromptUser -Title "Block Automatic BitLocker Encryption" -Message "`nDo you want to block Windows from automatically encrypting your drive with Bitlocker?`nThis will not disable Bitlocker functionality you can always encrypt on demand. This just prevents Windows from doing it without asking. It will not un-encrypt and already encrypted drive." -SuggestedAction "Yes, block Automatic BitLocker encryption and manually encrypt on your own terms." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to block Automatic BitLocker encryption. Selecting 'No' will not change BitLocker settings."
+        $response = Read-PromptUser -Title "Automatic BitLocker Encryption" -Message "`nDo you want to block Windows from automatically encrypting your drive with Bitlocker?`nThis will not disable Bitlocker functionality you can always encrypt on demand. This just prevents Windows from doing it without asking. It will not un-encrypt an already encrypted drive." -SuggestedAction "Block Automatic BitLocker encryption and manually encrypt on your own terms." -DefaultResponse "Skip" -ValidResponses @("Block") -InfoText "Selecting 'Block' will set registry to block Automatic BitLocker encryption. Selecting 'Skip' will not change BitLocker settings."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Block") {
         Write-Host "`nSetting Registry settings to block Automatic BitLocker Encryption..." -ForegroundColor White -BackgroundColor DarkGreen
         if ($Target -eq "Online") {
             Set-RegistryValue -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\BitLocker" -Name "PreventDeviceEncryption" -Value 1 -PropertyType Dword
@@ -1623,19 +1713,26 @@ function Tweak_AlignTaskbarIconsLeft {
         [switch]$Auto
     )
     if ($TargetWindowsVersion -ne "11+") { return }
-    Write-Header -Text "Align Taskbar Icons to Left"
+    Write-Header -Text "Align Taskbar Icons"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Left"
     } else {
-        $response = Read-PromptUser -Title "Align Taskbar to Left" -Message "`nDo you want to align the Taskbar icons to the left side of the screen instead of center?" -SuggestedAction "Align Taskbar icons to the left for a more familiar experience." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to align Taskbar icons to the left. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Align Taskbar Icons" -Message "`nDo you want to align the Taskbar icons to the left side of the screen or center?" -SuggestedAction "Align Taskbar icons to the left for a more familiar experience." -DefaultResponse "Skip" -ValidResponses @("Left", "Center") -InfoText "Selecting 'Left' will set registry to align Taskbar icons to the left. Selecting 'Center' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Left") {
         Write-Host "`nSetting Registry settings to align Taskbar to the left..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0 -PropertyType Dword
         Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0 -PropertyType Dword
         Write-Host "`nTaskbar aligned to the left." -ForegroundColor White -BackgroundColor DarkCyan
+    }
+    if ($response -eq "Center") {
+        Write-Host "`nSetting Registry settings to align Taskbar to the center..." -ForegroundColor White -BackgroundColor DarkGreen
+        
+        Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 1 -PropertyType Dword
+        Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 1 -PropertyType Dword
+        Write-Host "`nTaskbar aligned to the center." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
@@ -1647,11 +1744,11 @@ function Tweak_HideTaskbarRecentSearchHover {
     Write-Header -Text "Hide Recent Searches in Taskbar on Hover"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Hide"
     } else {
-        $response = Read-PromptUser -Title "Hide Recent Searches on Taskbar Hover" -Message "`nDo you want to stop recent search history from opening when hovering over the Search icon in the Taskbar?" -SuggestedAction "Yes, hide recent searches for better privacy and less distractions." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to hide recent searches on hover. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Recent Searches on Taskbar Hover" -Message "`nDo you want to stop recent search history from opening when hovering over the Search icon in the Taskbar?" -SuggestedAction "Hide recent searches for better privacy and less distractions." -DefaultResponse "Skip" -ValidResponses @("Hide") -InfoText "Selecting 'Hide' will set registry to hide recent searches on hover. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Hide") {
         Write-Host "`nSetting Registry settings to hide recent searches on hover..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarSh" -Value 0 -PropertyType DWord
@@ -1664,20 +1761,36 @@ function Tweak_TaskbarSearchBarToIcon {
     param (
         [switch]$Auto
     )
-    Write-Header -Text "Change Taskbar Search Bar to Icon"
+    Write-Header -Text "Change Taskbar Search Bar"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Icon"
     } else {
-        $response = Read-PromptUser -Title "Change Search Bar to Icon" -Message "`nDo you want to change the Search bar in the Taskbar to a simple Search icon?" -SuggestedAction "Yes, change to icon for a cleaner Taskbar." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to change Search bar to icon. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Change Search Bar" -Message "`nDo you want to hide the Search Bar, Change it to an Icon, or make it a full sized bar?" -SuggestedAction "Icon or Hide, the search bar for a cleaner Taskbar." -DefaultResponse "Skip" -ValidResponses @("Icon", "Hide", "Bar") -InfoText "Selecting 'Icon' will set registry to change Search bar to icon, Hide will hide the Search Bar, and selecting 'Bar' will make it a full sized bar. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Hide") {
+        Write-Host "`nSetting Registry settings to change Search bar to hidden..." -ForegroundColor White -BackgroundColor DarkGreen
+        
+        Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 0 -PropertyType Dword
+        Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 0 -PropertyType Dword
+        Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarModeCache" -Value 0 -PropertyType Dword
+        Write-Host "`nSearch bar changed to icon." -ForegroundColor White -BackgroundColor DarkCyan
+    }
+    if ($response -eq "Icon") {
         Write-Host "`nSetting Registry settings to change Search bar to icon..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1 -PropertyType Dword
         Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1 -PropertyType Dword
         Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarModeCache" -Value 1 -PropertyType Dword
         Write-Host "`nSearch bar changed to icon." -ForegroundColor White -BackgroundColor DarkCyan
+    }
+    if ($response -eq "Bar") {
+        Write-Host "`nSetting Registry settings to change Search bar to bar..." -ForegroundColor White -BackgroundColor DarkGreen
+        
+        Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 2 -PropertyType Dword
+        Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 2 -PropertyType Dword
+        Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarModeCache" -Value 2 -PropertyType Dword
+        Write-Host "`nSearch bar changed to bar." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
@@ -1686,14 +1799,14 @@ function Tweak_StartMenuMorePinnedItems {
         [switch]$Auto
     )
     if ($TargetWindowsVersion -ne "11+") { return }
-    Write-Header -Text "Start Menu More Pinned Items"
+    Write-Header -Text "Start Menu More Pinned Items / No Recommended Items"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Pins"
     } else {
-        $response = Read-PromptUser -Title "Show more Start Menu Pins instead of Reccomendations?" -Message "`nDo you want to claim more space in the Start Menu to pinned apps instead of Recommended items?" -SuggestedAction "Yes, to see more pins instead of recommendations." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to increase pinned items in Start Menu. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Start Menu Pins instead of Reccomendations?" -Message "`nDo you want to claim more space in the Start Menu to pinned apps instead of Recommended items?" -SuggestedAction "Pins, to see more pins instead of recommendations." -DefaultResponse "Skip" -ValidResponses @("Pins") -InfoText "Selecting 'Pins' will set registry to increase pinned items in Start Menu. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Pins") {
         Write-Host "`nSetting Registry settings to more Start Menu pinned items..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Start_Layout" -Value 1 -PropertyType Dword
@@ -1711,11 +1824,11 @@ function Tweak_ClassicContextMenu {
     Write-Header -Text "Enable Classic Context Menu"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Classic"
     } else {
-        $response = Read-PromptUser -Title "Enable Classic Context Menu" -Message "`nDo you want to enable the classic context menu instead of the new Windows 11 style context menu?" -SuggestedAction "Yes, if you prefer classic context menu." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to enable classic context menu. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Enable Classic Context Menu" -Message "`nDo you want to enable the classic context menu instead of the new Windows 11 style context menu?" -SuggestedAction "Classic, if you prefer classic context menu." -DefaultResponse "Skip" -ValidResponses @("Classic") -InfoText "Selecting 'Classic' will set registry to enable classic context menu. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Classic") {
         Write-Host "`nSetting Registry settings to enable Classic Context Menu..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" -Name "InprocServer32" -Value "" -PropertyType String
@@ -1732,11 +1845,11 @@ function Tweak_DisableClipboardSuggestions {
     Write-Header -Text "Disable Clipboard Suggestions"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Clipboard Suggestions" -Message "`nClipboard Suggestions is a feature where whenever you go to paste Text, instead of pasting normally, Windows asks you if you'd like to do transformative things to the text including using AI.`nDo you want to disable Clipboard suggestions and history?" -SuggestedAction "Yes, disable for better privacy and less distractions." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to disable Clipboard suggestions. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Disable Clipboard Suggestions" -Message "`nClipboard Suggestions is a feature where whenever you go to paste Text, instead of pasting normally, Windows asks you if you'd like to do transformative things to the text including using AI.`nDo you want to disable Clipboard suggestions and history?" -SuggestedAction "Disable for better privacy and less distractions." -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will set registry to disable Clipboard suggestions. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Write-Host "`nSetting Registry settings to disable Clipboard suggestions..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\SmartActionPlatform\SmartClipboard" -Name "Disabled" -Value 1 -PropertyType DWord
@@ -1752,15 +1865,21 @@ function Tweak_EnableLongPathSupport {
     Write-Header -Text "Enable Long Folder Paths"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Enable"
     } else {
-        $response = Read-PromptUser -Title "Enable Long Path Support" -Message "`nDo you want to enable Long Path support in Windows?`nThis allows applications to access folder paths longer than 260 characters." -SuggestedAction "Yes, enable Long Path support for better compatibility with modern applications." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to enable Long Path support. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Long Path Support" -Message "`nDo you want to enable Long Path support in Windows?`nThis allows applications to access folder paths longer than 260 characters." -SuggestedAction "Enable Long Path support for better compatibility with modern applications." -DefaultResponse "Skip" -ValidResponses @("Enable", "Disable") -InfoText "Selecting 'Enable' will set registry to enable Long Path support, or 'Disable' to revert to not having Long Path support. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Enable") {
         Write-Host "`nSetting Registry settings to enable Long Path Support..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\System" -Name "LongPathsEnabled" -Value 1 -PropertyType Dword
         Write-Host "`nLong Path support enabled." -ForegroundColor White -BackgroundColor DarkCyan
+    }
+    if ($response -eq "Disable") {
+        Write-Host "`nSetting Registry settings to disable Long Path Support..." -ForegroundColor White -BackgroundColor DarkGreen
+        
+        Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\System" -Name "LongPathsEnabled" -Value 0 -PropertyType Dword
+        Write-Host "`nLong Path support disabled." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
@@ -1771,11 +1890,11 @@ function Tweak_DisableLastAccessTime {
     Write-Header -Text "Disable Last Access Time"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Last Access Time" -Message "`nDo you want to disable the Last Access Time property on files and folders?`nDisabling this can improve performance on systems and reduce disk reads/writes.`nFile Created & Modified dates will remain." -SuggestedAction "Yes, disable Last Access Time updates for better performance." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to disable Last Access Time updates. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Last Access Time" -Message "`nDo you want to disable the Last Access Time property on files and folders?`nDisabling this can improve performance on systems and reduce disk reads/writes.`nFile Created & Modified dates will remain." -SuggestedAction "Disable Last Access Time updates for better performance." -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will set registry to disable Last Access Time updates. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Write-Host "`nSetting Registry settings to disable Last Access Time..." -ForegroundColor White -BackgroundColor DarkGreen
         if ($Target -eq "Online") {
             Set-RegistryValue -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\FileSystem" -Name "NtfsDisableLastAccessUpdate" -Value 80000001 -PropertyType Dword
@@ -1794,15 +1913,21 @@ function Tweak_DisableEdgeFirstRunExperience {
     Write-Header -Text "Disable Edge First Run Experience"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Edge First Run Experience" -Message "`nDo you want to disable the Microsoft Edge First Run Experience?`nThis prevents Edge from showing the welcome and setup screens on first launch." -SuggestedAction "Yes, disable Edge First Run Experience for a smoother user experience." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to disable Edge First Run Experience. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Edge First Run Experience" -Message "`nDo you want to disable the Microsoft Edge First Run Experience?`nThis prevents Edge from showing the welcome and setup screens on first launch." -SuggestedAction "Disable Edge First Run Experience for a smoother user experience." -DefaultResponse "Skip" -ValidResponses @("Disable", "Enable") -InfoText "Selecting 'Disable' will set registry to disable Edge First Run Experience, or 'Enable' will re-enable if it was disabled. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Write-Host "`nSetting Registry settings to disable Edge First Run Experience..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge" -Name "HideFirstRunExperience" -Value 1 -PropertyType DWord
         Write-Host "`nEdge First Run Experience disabled." -ForegroundColor White -BackgroundColor DarkCyan
+    }
+    if ($response -eq "Enable") {
+        Write-Host "`nSetting Registry settings to enable Edge First Run Experience..." -ForegroundColor White -BackgroundColor DarkGreen
+        
+        Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Edge" -Name "HideFirstRunExperience" -Value 0 -PropertyType DWord
+        Write-Host "`nEdge First Run Experience enabled." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
@@ -1810,14 +1935,14 @@ function Tweak_BlockEdgePDF {
     param (
         [switch]$Auto
     )
-    Write-Header -Text "Remove Microsoft Edge Default PDF Handler"
+    Write-Header -Text "Block Microsoft Edge Default PDF Handler"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Block"
     } else {
-        $response = Read-PromptUser -Title "Remove Edge as Default PDF Viewer" -Message "`nDo you want to remove Microsoft Edge from being the default PDF viewer?" -SuggestedAction "Block Edge if you prefer using a different PDF viewer." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to block Edge as default PDF viewer. Selecting 'No' will not change default PDF viewer settings."
+        $response = Read-PromptUser -Title "Edge as Default PDF Viewer" -Message "`nDo you want to block Microsoft Edge from being the default PDF viewer?" -SuggestedAction "Block, if you prefer using a different PDF viewer." -DefaultResponse "Skip" -ValidResponses @("Block") -InfoText "Selecting 'Block' will set registry to block Edge as default PDF viewer. Selecting 'Skip' will not change default PDF viewer settings."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Block") {
         Write-Host "`nSetting Registry settings to block Edge as Default PDF Viewer..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKCR:\.pdf\OpenWithProgIDs" -Name "MSEdgePDF" -Remove
@@ -1830,14 +1955,14 @@ function Tweak_EnableVerboseBSOD {
     param (
         [switch]$Auto
     )
-    Write-Header -Text "Enable Verbose BSOD"
+    Write-Header -Text "Verbose Blue Screen of Death (BOSD)"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Enable"
     } else {
-        $response = Read-PromptUser -Title "Enable Verbose Blue Screen of Death (BOSD)" -Message "`nDo you want to enable Verbose Blue Screen of Death (BOSD) messages?`nThis provides more detailed information during a system crash which can be useful for troubleshooting." -SuggestedAction "Yes, enable Verbose BOSD for better troubleshooting information." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to enable Verbose BOSD. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Verbose Blue Screen of Death (BOSD)" -Message "`nDo you want to enable Verbose Blue Screen of Death (BOSD) messages?`nThis provides more detailed information during a system crash which can be useful for troubleshooting." -SuggestedAction "Enable Verbose BOSD for better troubleshooting information." -DefaultResponse "Skip" -ValidResponses @("Enable", "Disable") -InfoText "Selecting 'Enable' will set registry to enable Verbose BOSD, or 'Disable' will revert back to not showing it. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Enable") {
         Write-Host "`nSetting Registry settings to enable Verbose Blue Screen of Death (BOSD)..." -ForegroundColor White -BackgroundColor DarkGreen
         if ($Target -eq "Online") {
             Set-RegistryValue -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\CrashControl" -Name "DisplayParameters" -Value 1 -PropertyType Dword
@@ -1845,6 +1970,15 @@ function Tweak_EnableVerboseBSOD {
             Set-RegistryValue -Path "Reg_HKLM_SYSTEM:\ControlSet001\Control\CrashControl" -Name "DisplayParameters" -Value 1 -PropertyType Dword
         }
         Write-Host "`nVerbose Blue Screen of Death (BOSD) enabled." -ForegroundColor White -BackgroundColor DarkCyan
+    }
+    if ($response -eq "Disable") {
+        Write-Host "`nSetting Registry settings to disable Verbose Blue Screen of Death (BOSD)..." -ForegroundColor White -BackgroundColor DarkGreen
+        if ($Target -eq "Online") {
+            Set-RegistryValue -Path "Reg_HKLM_SYSTEM:\CurrentControlSet\Control\CrashControl" -Name "DisplayParameters" -Value 0 -PropertyType Dword
+        } elseif ((Test-Path "Reg_HKLM_SYSTEM:\ControlSet001") -and ($Target -ne "Online")) {
+            Set-RegistryValue -Path "Reg_HKLM_SYSTEM:\ControlSet001\Control\CrashControl" -Name "DisplayParameters" -Value 0 -PropertyType Dword
+        }
+        Write-Host "`nVerbose Blue Screen of Death (BOSD) disabled." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
@@ -1855,15 +1989,21 @@ function Tweak_EnableVerboseStartupShutdown {
     Write-Header -Text "Enable Verbose Startup and Shutdown"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Enable"
     } else {
-        $response = Read-PromptUser -Title "Enable Verbose Startup and Shutdown Messages" -Message "`nDo you want to enable Verbose Startup and Shutdown messages?`nThis provides more detailed information during system startup and shutdown which can be useful for troubleshooting." -SuggestedAction "Yes, enable Verbose Startup and Shutdown messages for better troubleshooting information." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to enable Verbose Startup and Shutdown messages. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Verbose Startup and Shutdown Messages" -Message "`nDo you want to enable Verbose Startup and Shutdown messages?`nThis provides more detailed information during system startup and shutdown which can be useful for troubleshooting." -SuggestedAction "Enable Verbose Startup and Shutdown messages for better troubleshooting information." -DefaultResponse "Skip" -ValidResponses @("Enable", "Disable") -InfoText "Selecting 'Enable' will set registry to enable Verbose Startup and Shutdown messages, or 'Disable' to revert bak to not showing it. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Enable") {
         Write-Host "`nSetting Registry settings to enable Verbose Startup and Shutdown messages..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -Value 1 -PropertyType Dword
         Write-Host "`nVerbose Startup and Shutdown messages enabled." -ForegroundColor White -BackgroundColor DarkCyan
+    }
+    if ($response -eq "Disable") {
+        Write-Host "`nSetting Registry settings to disable Verbose Startup and Shutdown messages..." -ForegroundColor White -BackgroundColor DarkGreen
+        
+        Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -Value 0 -PropertyType Dword
+        Write-Host "`nVerbose Startup and Shutdown messages disabled." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
@@ -1874,11 +2014,11 @@ function Tweak_DisableStickyKeysShortcut {
     Write-Header -Text "Disable Sticky Keys Shortcut"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Sticky Keys Shortcut" -Message "`nDo you want to disable the Sticky Keys shortcut (pressing Shift key 5 times)?`nThis prevents the Sticky Keys prompt from appearing when the Shift key is pressed multiple times." -SuggestedAction "Yes, disable Sticky Keys shortcut to avoid accidental activation." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to disable Sticky Keys shortcut. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Sticky Keys Shortcut" -Message "`nDo you want to disable the Sticky Keys shortcut (pressing Shift key 5 times)?`nThis prevents the Sticky Keys prompt from appearing when the Shift key is pressed multiple times." -SuggestedAction "Disable Sticky Keys shortcut to avoid accidental activation." -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will set registry to disable Sticky Keys shortcut. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Write-Host "`nSetting Registry settings to disable Sticky Keys shortcut..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKCU:\Control Panel\Accessibility\StickyKeys" -Name "Flags" -Value "506" -PropertyType String
@@ -1894,11 +2034,11 @@ function Tweak_DisableFilterKeysShortcut {
     Write-Header -Text "Disable Filter Keys Shortcut"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Filter Keys Shortcut" -Message "`nDo you want to disable the Filter Keys shortcut (holding down the right Shift key for 8 seconds)?`nThis prevents the Filter Keys prompt from appearing when the right Shift key is held down." -SuggestedAction "Yes, disable Filter Keys shortcut to avoid accidental activation." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to disable Filter Keys shortcut. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Filter Keys Shortcut" -Message "`nDo you want to disable the Filter Keys shortcut (holding down the right Shift key for 8 seconds)?`nThis prevents the Filter Keys prompt from appearing when the right Shift key is held down." -SuggestedAction "Disable Filter Keys shortcut to avoid accidental activation." -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will set registry to disable Filter Keys shortcut. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Write-Host "`nSetting Registry settings to disable Filter Keys shortcut..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKCU:\Control Panel\Accessibility\FilterKeys" -Name "Flags" -Value "122" -PropertyType String
@@ -1914,11 +2054,11 @@ function Tweak_DisableToggleKeysShortcut {
     Write-Header -Text "Disable Toggle Keys Shortcut"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Toggle Keys Shortcut" -Message "`nDo you want to disable the Toggle Keys shortcut (holding down the Num Lock key for 5 seconds)?`nThis prevents the Toggle Keys prompt from appearing when the Num Lock key is held down." -SuggestedAction "Yes, disable Toggle Keys shortcut to avoid accidental activation." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to disable Toggle Keys shortcut. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Toggle Keys Shortcut" -Message "`nDo you want to disable the Toggle Keys shortcut (holding down the Num Lock key for 5 seconds)?`nThis prevents the Toggle Keys prompt from appearing when the Num Lock key is held down." -SuggestedAction "Disable Toggle Keys shortcut to avoid accidental activation." -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will set registry to disable Toggle Keys shortcut. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Write-Host "`nSetting Registry settings to disable Toggle Keys shortcut..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKCU:\Control Panel\Accessibility\ToggleKeys" -Name "Flags" -Value "58" -PropertyType String
@@ -1931,7 +2071,7 @@ function Tweak_ShowHideSystemTrayIcons {
     Write-Header -Text "Show or Hide System Tray Icons by Default"
     $response = $null
     
-    $response = Read-PromptUser -Title "Show or Hide Tray Icons by Default" -Message "`nDo you want to Show All System Tray icons by default, Hide them (default), or Skip changing anything?" -SuggestedAction "Hide if you want a clean taskbar or Show if you want to always see all icons.." -DefaultResponse "Skip" -ValidResponses @("Show", "Hide", "Skip") -HelpText "Selecting 'Show' will show hidden tray icons by default. Selecting 'Hide' will hide icons by default which is usual Windows behavior. Selecting 'Skip' will not change this setting."
+    $response = Read-PromptUser -Title "Show or Hide Tray Icons by Default" -Message "`nDo you want to Show All System Tray icons by default, Hide them (default), or Skip changing anything?" -SuggestedAction "Hide if you want a clean taskbar or Show if you want to always see all icons.." -DefaultResponse "Skip" -ValidResponses @("Show", "Hide") -InfoText "Selecting 'Show' will show hidden tray icons by default. Selecting 'Hide' will hide icons by default which is usual Windows behavior. Selecting 'Skip' will not change this setting."
     if ($response -eq "Show") {
         Write-Host "`nSetting Registry settings to show hidden tray icons by default..." -ForegroundColor White -BackgroundColor DarkGreen
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "EnableAutoTray" -Value 0 -PropertyType DWord
@@ -1951,7 +2091,7 @@ function Tweak_ShowHideFileExtensions {
     Write-Header -Text "Show or Hide File Extensions"
     $response = $null
     
-    $response = Read-PromptUser -Title "Show or Hide File Extensions" -Message "`nDo you want to Show File Extensions for known file types, Hide them (default), or Skip changing anything?" -SuggestedAction "Show if you want better visibility of file types for security." -DefaultResponse "Skip" -ValidResponses @("Show", "Hide", "Skip") -HelpText "Selecting 'Show' will show file extensions for known file types. Selecting 'Hide' will hide them which is usual Windows behavior. Selecting 'Skip' will not change this setting."
+    $response = Read-PromptUser -Title "Show or Hide File Extensions" -Message "`nDo you want to Show File Extensions for known file types, Hide them (default), or Skip changing anything?" -SuggestedAction "Show if you want better visibility of file types for security." -DefaultResponse "Skip" -ValidResponses @("Show", "Hide") -InfoText "Selecting 'Show' will show file extensions for known file types. Selecting 'Hide' will hide them which is usual Windows behavior. Selecting 'Skip' will not change this setting."
     if ($response -eq "Show") {
         Write-Host "`nSetting Registry settings to show file extensions..." -ForegroundColor White -BackgroundColor DarkGreen
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "HideFileExt" -Value 0 -PropertyType DWord
@@ -1971,7 +2111,7 @@ function Tweak_ShowHideDetailedFileOperations {
     Write-Header -Text "Show or Hide Detailed File Operations"
     $response = $null
     
-    $response = Read-PromptUser -Title "Show or Hide Detailed File Operation Dialogs" -Message "`nDo you want to Show detailed information in file operation dialogs (copy, move, delete) such as Speed, Item, and ETA; Hide them only showing a progress bar (default), or Skip changing anything?" -SuggestedAction "Show if you want to see detailed information during file operations." -DefaultResponse "Skip" -ValidResponses @("Show", "Hide", "Skip") -HelpText "Selecting 'Show' will show file detailed operation dialogs. Selecting 'Hide' will show just a progress bar in a neat small window. Selecting 'Skip' will not change this setting."
+    $response = Read-PromptUser -Title "Show or Hide Detailed File Operation Dialogs" -Message "`nDo you want to Show detailed information in file operation dialogs (copy, move, delete) such as Speed, Item, and ETA; Hide them only showing a progress bar (default), or Skip changing anything?" -SuggestedAction "Show if you want to see detailed information during file operations." -DefaultResponse "Skip" -ValidResponses @("Show", "Hide") -InfoText "Selecting 'Show' will show file detailed operation dialogs. Selecting 'Hide' will show just a progress bar in a neat small window. Selecting 'Skip' will not change this setting."
     if ($response -eq "Show") {
         Write-Host "`nSetting Registry settings to show detailed file operation dialogs..." -ForegroundColor White -BackgroundColor DarkGreen
         Set-RegistryValue -Path "Reg_HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\OperationStatusManager" -Name "EnthusiastMode" -PropertyType DWord -Value 1
@@ -1991,7 +2131,7 @@ function Tweak_SelectDefaultExplorerLocation {
     Write-Header -Text "Select Default Explorer Location"
     $response = $null
     
-    $response = Read-PromptUser -Title "Default Folder for Explorer" -Message "`nWhenever you open Windows File Explorer you are taken to a folder by default.`nWould you like the default folder to be:`nSelect (PC) for: This PC - Shows your drives like C:\`nSelect (QUICK) for: Quick Access (default) - Your recently used files and folders`nSelect (Downloads) for: Downloads - Your Downloads folder.`nSelect (SKIP) to not change the current setting." -SuggestedAction "Choose your preferred option or simply Skip." -DefaultResponse "Skip" -ValidResponses @("PC", "Quick", "Downloads") -HelpText "Selecting 'PC' will set File Explorer to open to This PC. Selecting 'Quick' will set File Explorer to open to Quick Access. Selecting 'Downloads' will set File Explorer to open to Downloads folder. Selecting 'Skip' will not change this setting."
+    $response = Read-PromptUser -Title "Default Folder for Explorer" -Message "`nWhenever you open Windows File Explorer you are taken to a folder by default.`nWould you like the default folder to be:`nSelect (PC) for: This PC - Shows your drives like C:\`nSelect (QUICK) for: Quick Access (default) - Your recently used files and folders`nSelect (Downloads) for: Downloads - Your Downloads folder.`nSelect 'Skip' to not change the current setting." -SuggestedAction "Choose your preferred option or simply Skip." -DefaultResponse "Skip" -ValidResponses @("PC", "Quick", "Downloads") -InfoText "Selecting 'PC' will set File Explorer to open to This PC. Selecting 'Quick' will set File Explorer to open to Quick Access. Selecting 'Downloads' will set File Explorer to open to Downloads folder. Selecting 'Skip' will not change this setting."
     if ($response -eq "PC") {
         Write-Host "`nSetting Registry settings to open File Explorer to This PC..." -ForegroundColor White -BackgroundColor DarkGreen
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "LaunchTo" -Value 1 -PropertyType DWord
@@ -2019,11 +2159,11 @@ function Privacy_BlockTelemetry {
     Write-Header -Text "Block Telemetry and Data Collection"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Block"
     } else {
-        $response = Read-PromptUser -Title "Block Telemetry and Data Collection" -Message "`nDo you want to block Telemetry and Data Collection features in Windows?`nThis will set various registry settings to limit data collection and telemetry sent to Microsoft." -SuggestedAction "Yes, block Telemetry for better privacy." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to block Telemetry and Data Collection. Selecting 'No' will not change these settings."
+        $response = Read-PromptUser -Title "Telemetry and Data Collection" -Message "`nDo you want to block Telemetry and Data Collection features in Windows?`nThis will set various registry settings to limit data collection and telemetry sent to Microsoft." -SuggestedAction "Block Telemetry for better privacy." -DefaultResponse "Skip" -ValidResponses @("Block") -InfoText "Selecting 'Block' will set registry to block Telemetry and Data Collection. Selecting 'Skip' will not change these settings."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Block") {
         Write-Host "`nDisabling Advertising ID" -ForegroundColor White -BackgroundColor DarkBlue
         Set-RegistryValue -Path "Reg_HKCU:\SOFTWARE\Microsoft\Input\TIPC" -Name "Enabled" -Value 0 -PropertyType DWord
         Set-RegistryValue -Path "Reg_HKDefaultUser:\SOFTWARE\Microsoft\Input\TIPC" -Name "Enabled" -Value 0 -PropertyType Dword
@@ -2137,14 +2277,14 @@ function Privacy_BlockUserAccountActivity {
     param (
         [switch]$Auto
     )
-    Write-Header -Text "Block Storing User Account Activity"
+    Write-Header -Text "Disable Storing User Account Activity"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Storing User Activity History" -Message "`nDo you want to disable Storing User Activity History tracking on this PC?`nThis will prevent Windows from tracking your activities across apps and services." -SuggestedAction "Yes, disable User Activity History for better privacy." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry to disable User Activity History. Selecting 'No' will not change this setting."
+        $response = Read-PromptUser -Title "Storing User Activity History" -Message "`nDo you want to disable Storing User Activity History tracking on this PC?`nThis will prevent Windows from tracking your activities across apps and services." -SuggestedAction "Disable User Activity History for better privacy." -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will set registry to disable User Activity History. Selecting 'Skip' will not change this setting."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Write-Host "`nSetting Registry settings to disable User Activity History..." -ForegroundColor White -BackgroundColor DarkGreen
         
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" -Name "PublishUserActivities" -Value 0 -PropertyType DWord
@@ -2162,11 +2302,11 @@ function Privacy_BlockAppUserAccountAccess {
     Write-Header -Text "Block Apps from Accessing User Account Information"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Block"
     } else {
-        $response = Read-PromptUser -Title "Block Apps accessing User Account Information" -Message "`nDo you want to block apps from accessing user account information?`nBy default any app can read your Username, Email Address, Profile Picture, and more without asking." -SuggestedAction "Yes, for privacy" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will block apps from accessing user account information. Selecting 'No' will leave it enabled."
+        $response = Read-PromptUser -Title "Apps accessing User Account Information" -Message "`nDo you want to block apps from accessing user account information?`nBy default any app can read your Username, Email Address, Profile Picture, and more without asking." -SuggestedAction "Block, for privacy" -DefaultResponse "Skip" -ValidResponses @("Block") -InfoText "Selecting 'Block' will block apps from accessing user account information. Selecting 'Skip' will leave it enabled."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Block") {
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\userAccountInformation" -Name "Value" -Value "Deny" -PropertyType String
         Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\userAccountInformation" -Name "Value" -Value "Deny" -PropertyType String
 
@@ -2184,11 +2324,11 @@ function Privacy_BlockAppDiagnosticAccess {
     Write-Header -Text "Block Apps from Accessing Diagnostic Information"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Block"
     } else {
-        $response = Read-PromptUser -Title "Block Apps accessing Diagnostic Information" -Message "`nDo you want to block apps from accessing diagnostic information?`nBy default any app can read your diagnostic data without asking." -SuggestedAction "Yes, for privacy" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will block apps from accessing diagnostic information. Selecting 'No' will leave it enabled."
+        $response = Read-PromptUser -Title "Apps accessing Diagnostic Information" -Message "`nDo you want to block apps from accessing diagnostic information?`nBy default any app can read your diagnostic data without asking." -SuggestedAction "Block, for privacy" -DefaultResponse "Skip" -ValidResponses @("Block") -InfoText "Selecting 'Block' will block apps from accessing diagnostic information. Selecting 'Skip' will leave it enabled."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Block") {
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\appDiagnostics" -Name "Value" -Value "Deny" -PropertyType String
         Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\appDiagnostics" -Name "Value" -Value "Deny" -PropertyType String
 
@@ -2206,11 +2346,11 @@ function Privacy_DisableErrorReporting {
     Write-Header -Text "Disable Windows Error Reporting"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Error Reporting" -Message "`nDo you want to disable Windows Error Reporting?`nThis will prevent Windows from sending error reports to Microsoft." -SuggestedAction "Yes, for privacy" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will disable Windows Error Reporting. Selecting 'No' will leave it enabled."
+        $response = Read-PromptUser -Title "Error Reporting" -Message "`nDo you want to disable Windows Error Reporting?`nThis will prevent Windows from sending error reports to Microsoft." -SuggestedAction "Disable, for privacy" -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will disable Windows Error Reporting. Selecting 'Skip' will leave it enabled."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Windows Error Reporting" -Name "Disabled" -Value 1 -PropertyType DWord
         Remove-BloatServices -RemovalList "WerSvc"
         Remove-AppxBloat -RemovalList "Microsoft.WindowsFeedbackHub"
@@ -2225,11 +2365,11 @@ function Privacy_DisableTextMessageCloudBackup {
     Write-Header -Text "Disable Text Message Cloud Backup"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Text Message Cloud Backup" -Message "`nDo you want to disable text message cloud backup?`nBy default Windows can back up your text messages to the cloud if you use the Your Phone app." -SuggestedAction "Yes, for privacy" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will disable text message cloud backup. Selecting 'No' will leave it enabled."
+        $response = Read-PromptUser -Title "Text Message Cloud Backup" -Message "`nDo you want to disable text message cloud backup?`nBy default Windows can back up your text messages to the cloud if you use the Your Phone app." -SuggestedAction "Disable, for privacy" -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will disable text message cloud backup. Selecting 'Skip' will leave it enabled."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Messaging" -Name "AllowMessageSync" -Value 0 -PropertyType Dword
         Write-Host "`nText Message Cloud Backup Disabled." -ForegroundColor White -BackgroundColor DarkCyan
     }
@@ -2242,11 +2382,11 @@ function Privacy_DisableClipboardCloudSync {
     Write-Header -Text "Disable Cloud Clipboard Sync"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Clipboard Cloud Sync" -Message "`nDo you want to disable clipboard cloud sync?`nBy default Windows can sync your clipboard history across devices using your Microsoft account." -SuggestedAction "Yes, for privacy" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will disable clipboard cloud sync. Selecting 'No' will leave it enabled."
+        $response = Read-PromptUser -Title "Clipboard Cloud Sync" -Message "`nDo you want to disable clipboard cloud sync?`nBy default Windows can sync your clipboard history across devices using your Microsoft account." -SuggestedAction "Disable, for privacy" -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will disable clipboard cloud sync. Selecting 'Skip' will leave it enabled."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Clipboard" -Name "EnableCloudClipboard" -Value 0 -PropertyType DWord
         Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Clipboard" -Name "EnableCloudClipboard" -Value 0 -PropertyType DWord
         Write-Host "`nClipboard Cloud Sync Disabled." -ForegroundColor White -BackgroundColor DarkCyan
@@ -2260,11 +2400,11 @@ function Privacy_DisableClipboardHistory {
     Write-Header -Text "Disable Clipboard History"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Clipboard History" -Message "`nDo you want to disable clipboard history?`nBy default Windows can save your clipboard history locally." -SuggestedAction "Yes, for privacy" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will disable clipboard history. Selecting 'No' will leave it enabled."
+        $response = Read-PromptUser -Title "Clipboard History" -Message "`nDo you want to disable clipboard history?`nBy default Windows can save your clipboard history locally.`nYou can access it using Winkey + V" -SuggestedAction "Disable, for privacy" -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will disable clipboard history. Selecting 'Skip' will leave it enabled."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Clipboard" -Name "EnableClipboardHistory" -Value 0 -PropertyType DWord
         Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Clipboard" -Name "EnableClipboardHistory" -Value 0 -PropertyType DWord
         # System Level Policy
@@ -2280,11 +2420,11 @@ function Privacy_DisableWindowsSpotlight {
     Write-Header -Text "Disable Windows Spotlight"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Windows Spotlight" -Message "`nDo you want to disable Windows Spotlight?`nWindows Spotlight displays images and ads on the lock screen." -SuggestedAction "Yes, for privacy" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will disable Windows Spotlight. Selecting 'No' will leave it enabled."
+        $response = Read-PromptUser -Title "Windows Spotlight" -Message "`nDo you want to disable Windows Spotlight?`nWindows Spotlight displays images and ads on the lock screen." -SuggestedAction "Disable, for privacy" -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will disable Windows Spotlight. Selecting 'Skip' will leave it enabled."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "RotatingLockScreenEnabled" -PropertyType Dword -Value 0
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "RotatingLockScreenOverlayEnabled" -PropertyType Dword -Value 0
         Set-RegistryValue -Path "Reg_HKCU:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name "DisableWindowsSpotlightFeatures" -PropertyType Dword -Value 1
@@ -2315,11 +2455,11 @@ function Privacy_DisableCameraAtLogon {
     Write-Header -Text "Disable Camera at Logon"
     $response = $null
     if ($Auto) {
-        $response = "Yes"
+        $response = "Disable"
     } else {
-        $response = Read-PromptUser -Title "Disable Camera at Logon" -Message "`nDo you want to disable camera access at logon?`nBy default Windows can use the camera at the logon screen for features like Windows Hello.`nAnswering yes will disable the Camera from being usable at the logon screen." -SuggestedAction "Yes, for privacy" -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will disable camera access at logon. Selecting 'No' will leave it enabled."
+        $response = Read-PromptUser -Title "Disable Camera at Logon" -Message "`nDo you want to disable camera access at logon?`nBy default Windows can use the camera at the logon screen for features like Windows Hello.`nAnswering 'Disable' will disable the Camera from being usable at the logon screen." -SuggestedAction "Disable, for privacy" -DefaultResponse "Skip" -ValidResponses @("Disable") -InfoText "Selecting 'Disable' will disable camera access at logon. Selecting 'Skip' will leave it enabled."
     }
-    if ($response -eq "Yes") {
+    if ($response -eq "Disable") {
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Policies\Microsoft\Windows\Personalization" -Name "NoLockScreenCamera" -Value 1 -PropertyType DWord
         Write-Host "`nCamera access at logon Disabled." -ForegroundColor White -BackgroundColor DarkCyan
     }
@@ -2329,21 +2469,21 @@ function Privacy_DisableCameraAtLogon {
 
 #region Bloatlists
 $Script:BloatlistAppxPossible = @(
-    @{Item="Microsoft.MicrosoftSolitaireCollection";Desc="Modern online version of Solitaire with ads and optional sign-in. Not the classic Solitaire. Can be reinstalled from the Store."},
-    @{Item="Microsoft.3DBuilder";Desc="Legacy 3D modeling and printing app. Allows basic editing and repair of 3D files like STL and OBJ."},
-    @{Item="Microsoft.Microsoft3DViewer";Desc="Viewer for 3D model files (e.g., FBX, OBJ, STL). Includes basic animation and mixed reality features."},
-    @{Item="Microsoft.Print3D";Desc="Deprecated 3D printing app. Replaced by 3D Builder. Known for security vulnerabilities."},
-    @{Item="Microsoft.RemoteDesktop";Desc="Remote Desktop client for connecting to other PCs. Being replaced by the Windows App."},
-    @{Item="Microsoft.GetHelp";Desc="Basic support app for Windows troubleshooting. Some SARA tool features moved here."},
-    @{Item="Microsoft.WindowsAlarms";Desc="Clock app with alarm, timer, and stopwatch features. Preinstalled on most Windows versions."},
-    @{Item="Microsoft.WindowsCamera";Desc="Simple camera app for taking photos and videos using your webcam."},
-    @{Item="Microsoft.YourPhone";Desc="Phone Link app to sync Android phone with PC. Shows texts, calls, and notifications. Runs background services."},
-    @{Item="Microsoft.OutlookForWindows";Desc="New Outlook client replacing Mail and Calendar apps. Can run alongside classic Outlook."},
-    @{Item="Microsoft.PowerAutomateDesktop";Desc="Automation tool for creating desktop workflows. Part of Power Platform."},
-    @{Item="MicrosoftWindows.CrossDevice";Desc="Enables cross-device experiences like clipboard sync and app continuation across Windows devices."},
-    @{Item="Microsoft.MicrosoftStickyNotes";Desc="Sticky Notes app for quick notes on desktop. Syncs across devices via Microsoft account."},
-    @{Item="Microsoft.Office.OneNote";Desc="Note-taking app for organizing text, drawings, and media. Syncs with Office 365."},
-    @{Item="Microsoft.Whiteboard";Desc="Collaborative whiteboard app for drawing and brainstorming in real-time with others."}
+    @{Item="Microsoft.MicrosoftSolitaireCollection";Desc="Modern online version of Solitaire with ads and optional sign-in. Not the classic Solitaire. Can be reinstalled from the Store.";Suggested="Remove unless you play it."},
+    @{Item="Microsoft.3DBuilder";Desc="Legacy 3D modeling and printing app. Allows basic editing and repair of 3D files like STL and OBJ.";Suggested="Remove, it's deprecated."},
+    @{Item="Microsoft.Microsoft3DViewer";Desc="Viewer for 3D model files (e.g., FBX, OBJ, STL). Includes basic animation and mixed reality features.";Suggested="Harmless, just a 3D model viewer. Remove to save space."},
+    @{Item="Microsoft.Print3D";Desc="Deprecated 3D printing app. Replaced by 3D Builder. Known for security vulnerabilities.";Suggested="Remove, it's deprecated and insecure."},
+    @{Item="Microsoft.RemoteDesktop";Desc="Remote Desktop client for connecting to other PCs. Being replaced by the Windows App.";Suggested="Skip (Keep) only if you use Windows Remote Desktop."},
+    @{Item="Microsoft.GetHelp";Desc="Basic support app for Windows troubleshooting. Some SARA tool features moved here.";Suggested="Remove unless new to Windows and need help."},
+    @{Item="Microsoft.WindowsAlarms";Desc="Clock app with alarm, timer, and stopwatch features. Preinstalled on most Windows versions.";Suggested="Skip (Keep), provides basic timer and alarm functions."},
+    @{Item="Microsoft.WindowsCamera";Desc="Simple camera app for taking photos and videos using your webcam.";Suggested="Skip (Keep), it's a very basic camera app."},
+    @{Item="Microsoft.YourPhone";Desc="Phone Link app to sync Android phone with PC. Shows texts, calls, and notifications. Runs background services.";Suggested="Remove for privacy, Skip (Keep) if you want to sync phone."},
+    @{Item="Microsoft.OutlookForWindows";Desc="New Outlook client replacing Mail and Calendar apps. Can run alongside classic Outlook.";Suggested="Skip (Keep) if you use Outlook, otherwise remove."},
+    @{Item="Microsoft.PowerAutomateDesktop";Desc="Automation tool for creating desktop workflows. Part of Power Platform.";Suggested="Remove unless you use it for automation tasks."},
+    @{Item="MicrosoftWindows.CrossDevice";Desc="Enables cross-device experiences like clipboard sync and app continuation across Windows devices.";Suggested="Remove for privacy, Skip (Keep) if you use cross-device features."},
+    @{Item="Microsoft.MicrosoftStickyNotes";Desc="Sticky Notes app for quick notes on desktop. Syncs across devices via Microsoft account.";Suggested="Skip (Keep) if you use Sticky Notes, otherwise remove."},
+    @{Item="Microsoft.Office.OneNote";Desc="Note-taking app for organizing text, drawings, and media. Syncs with Office 365.";Suggested="Skip (Keep) if you use OneNote, otherwise remove."},
+    @{Item="Microsoft.Whiteboard";Desc="Collaborative whiteboard app for drawing and brainstorming in real-time with others.";Suggested="Remove unless you use it for collaboration."}
 ) | ForEach-Object { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 
 $Script:BloatlistAppxSponsored = @(
@@ -2400,74 +2540,74 @@ $Script:BloatlistAppxSponsored = @(
 )
 
 $Script:BloatlistAppxJunk = @(
-    @{Item="MicrosoftWindows.Client.WebExperience";Desc="Provides Widgets on the taskbar. Loads web content continuously, even when hidden. Can impact performance."},
-    @{Item="*Microsoft.BingWeather*";Desc="Weather app that uses your location to show forecasts. Sends location data to Microsoft."},
-    @{Item="Microsoft.MinecraftUWP";Desc="Minecraft Bedrock Edition for Windows. Requires a license. Can be reinstalled from the Store."},
+    @{Item="MicrosoftWindows.Client.WebExperience";Desc="Provides Widgets on the taskbar. Loads web content continuously, even when hidden. Can impact performance.";Suggested="Remove for better performance and privacy."},
+    @{Item="*Microsoft.BingWeather*";Desc="Weather app that uses your location to show forecasts. Sends location data to Microsoft.";Suggested="Remove for privacy."},
+    @{Item="Microsoft.MinecraftUWP";Desc="Minecraft Bedrock Edition for Windows. Requires a license. Can be reinstalled from the Store.";Suggested="Remove if you don't play Minecraft Bedrock Edition."},
     #@{Item="Microsoft.MicrosoftEdgeDevToolsClient";Desc="Developer tools for Microsoft Edge. Remove only if Edge is removed."}, #Cannot be removed
-    @{Item="Microsoft.Windows.DevHome";Desc="Developer dashboard for managing projects, system info, and GitHub integration. Not useful for non-developers."},
-    @{Item="Microsoft.Advertising.Xaml";Desc="Provides APIs for displaying ads in UWP apps. Used by some Store apps."},
-    @{Item="Microsoft.Appconnector";Desc="Legacy connector for cross-device app experiences. Mostly obsolete."},
-    @{Item="Microsoft.BingFinance";Desc="Finance app showing market data, news, and personal finance tools."},
-    @{Item="Microsoft.BingNews";Desc="News aggregator app showing headlines from various sources. Sends usage data to Microsoft."},
-    @{Item="Microsoft.BingSports";Desc="Sports news app with scores, schedules, and updates."},
-    @{Item="Microsoft.BingTranslator";Desc="Translation app for text, speech, and images. Uses Microsoft cloud services."},
-    @{Item="Microsoft.BingFoodAndDrink";Desc="Deprecated app with recipes and cooking tips. No longer maintained."},
-    @{Item="Microsoft.BingHealthAndFitness";Desc="Obsolete app with fitness tracking and health tips. No longer supported."},
-    @{Item="Microsoft.BingTravel";Desc="Travel app with guides, booking tools, and recommendations. Deprecated."},
-    @{Item="Microsoft.WindowsReadingList";Desc="Legacy app for saving articles and content to read later. No longer supported."},
-    @{Item="Microsoft.FreshPaint";Desc="Digital painting app with realistic brushes and canvas effects."},
-    @{Item="Microsoft.Getstarted";Desc="Introductory app with tutorials for new Windows users. Safe to remove."},
-    @{Item="Microsoft.MicrosoftOfficeHub";Desc="Launcher for Office apps and services. Mostly redundant if Office is installed."},
-    @{Item="Microsoft.MicrosoftPowerBIForWindows";Desc="Power BI desktop app for viewing and analyzing business data."},
-    @{Item="Microsoft.NetworkSpeedTest";Desc="Simple app to test internet speed. No longer maintained."},
-    @{Item="Microsoft.News";Desc="Modern version of Bing News. Aggregates headlines and articles."},
-    @{Item="Microsoft.Office.Lens";Desc="Document scanning app that saves to PDF or image formats."},
-    @{Item="Microsoft.Office.Sway";Desc="Web-based presentation app. Deprecated and rarely used."},
-    @{Item="Microsoft.OneConnect";Desc="Obsolete app for connecting to social and messaging services. Safe to remove."},
-    @{Item="Microsoft.People";Desc="Contact manager app. Syncs with email and social accounts."},
-    @{Item="Microsoft.SkypeApp";Desc="Skype UWP app for messaging and calls. Can be replaced with desktop version."},
-    @{Item="Microsoft.Office.Todo.List";Desc="Microsoft To Do app for task and list management."},
+    @{Item="Microsoft.Windows.DevHome";Desc="Developer dashboard for managing projects, system info, and GitHub integration. Not useful for non-developers.";Suggested="Remove unless you are a developer."},
+    @{Item="Microsoft.Advertising.Xaml";Desc="Provides APIs for displaying ads in UWP apps. Used by some Store apps.";Suggested="Remove for privacy."},
+    @{Item="Microsoft.Appconnector";Desc="Legacy connector for cross-device app experiences. Mostly obsolete.";Suggested="Remove, it's obsolete."},
+    @{Item="Microsoft.BingFinance";Desc="Finance app showing market data, news, and personal finance tools.";Suggested="Remove unless you use it."},
+    @{Item="Microsoft.BingNews";Desc="News aggregator app showing headlines from various sources. Sends usage data to Microsoft.";Suggested="Remove for privacy and performance."},
+    @{Item="Microsoft.BingSports";Desc="Sports news app with scores, schedules, and updates.";Suggested="Remove unless you use it."},
+    @{Item="Microsoft.BingTranslator";Desc="Translation app for text, speech, and images. Uses Microsoft cloud services.";Suggested="Remove, there's better alternatives."},
+    @{Item="Microsoft.BingFoodAndDrink";Desc="Deprecated app with recipes and cooking tips. No longer maintained.";Suggested="Remove, it's obsolete."},
+    @{Item="Microsoft.BingHealthAndFitness";Desc="Obsolete app with fitness tracking and health tips. No longer supported.";Suggested="Remove, it's obsolete."},
+    @{Item="Microsoft.BingTravel";Desc="Travel app with guides, booking tools, and recommendations. Deprecated.";Suggested="Remove, it's obsolete."},
+    @{Item="Microsoft.WindowsReadingList";Desc="Legacy app for saving articles and content to read later. No longer supported.";Suggested="Remove, it's obsolete."},
+    @{Item="Microsoft.FreshPaint";Desc="Digital painting app with realistic brushes and canvas effects.";Suggested="Remove unless you use it."},
+    @{Item="Microsoft.Getstarted";Desc="Introductory app with tutorials for new Windows users. Safe to remove.";Suggested="Remove unless you're new to Windows."},
+    @{Item="Microsoft.MicrosoftOfficeHub";Desc="Launcher for Office web-based apps and services. Mostly redundant if you use office desktop apps.";Suggested="Remove unless you use Office web apps and prefer it just going to the website."},
+    @{Item="Microsoft.MicrosoftPowerBIForWindows";Desc="Power BI desktop app for viewing and analyzing business data.";Suggested="Remove unless you use Power BI for business."},
+    @{Item="Microsoft.NetworkSpeedTest";Desc="Simple app to test internet speed. No longer maintained.";Suggested="Remove, there are better alternatives."},
+    @{Item="Microsoft.News";Desc="Modern version of Bing News. Aggregates headlines and articles.";Suggested="Remove for privacy and performance."},
+    @{Item="Microsoft.Office.Lens";Desc="Document scanning app that saves to PDF or image formats.";Suggested="Remove unless you use it for scanning documents."},
+    @{Item="Microsoft.Office.Sway";Desc="Web-based presentation app. Deprecated and rarely used.";Suggested="Remove, it's obsolete."},
+    @{Item="Microsoft.OneConnect";Desc="Obsolete app for connecting to social and messaging services. Safe to remove.";Suggested="Remove, it's obsolete."},
+    @{Item="Microsoft.People";Desc="Contact manager app. Syncs with email and social accounts.";Suggested="Remove for privacy. It's very invasive."},
+    @{Item="Microsoft.SkypeApp";Desc="Skype UWP app for messaging and calls. Can be replaced with desktop version.";Suggested="Remove, it's obsolete."},
+    @{Item="Microsoft.Office.Todo.List";Desc="Microsoft To Do app for task and list management.";Suggested="Remove unless you use it for task management."},
     #@{Item="Microsoft.WindowsFeedbackHub";Desc="App for submitting feedback to Microsoft."}, #Moved to Privacy_DisableErrorReporting function
     #@{Item="Microsoft.WindowsMaps";Desc="Maps and navigation app with offline support."}, #Moved to Bloatware_MicrosoftMaps function
-    @{Item="Microsoft.WindowsPhone";Desc="Legacy app for syncing with Windows Phone devices. Deprecated."},
-    @{Item="Microsoft.WindowsSoundRecorder";Desc="Basic voice recording app. Can be replaced with third-party tools."},
-    @{Item="Microsoft.ZuneMusic";Desc="Legacy music app. Replaced by Groove and Media Player."},
-    @{Item="Microsoft.ZuneVideo";Desc="Legacy video app. Replaced by Movies & TV."},
-    @{Item="Microsoft.CommsPhone";Desc="Phone dialer component for calling features. Rarely used."},
-    @{Item="Microsoft.Wallet";Desc="Digital wallet app for storing payment cards. Deprecated."},
-    @{Item="Microsoft.MixedReality.Portal";Desc="Portal for setting up and managing VR headsets. Safe to remove if not using VR."},
-    @{Item="MicrosoftCorporationII.MicrosoftFamily";Desc="Family safety and parental control features for Microsoft accounts."},
-    @{Item="Microsoft.BingSearch";Desc="Provides Bing search integration in Windows. Can be removed for privacy."}
+    @{Item="Microsoft.WindowsPhone";Desc="Legacy app for syncing with Windows Phone devices. Deprecated.";Suggested="Remove, it's obsolete."},
+    @{Item="Microsoft.WindowsSoundRecorder";Desc="Basic voice recording app. Can be replaced with third-party tools.";Suggested="Remove, there are better alternatives."},
+    @{Item="Microsoft.ZuneMusic";Desc="Legacy music app. Replaced by Groove and Media Player.";Suggested="Remove, there are better alternatives."},
+    @{Item="Microsoft.ZuneVideo";Desc="Legacy video app. Replaced by Movies & TV.";Suggested="Remove, there are better alternatives."},
+    @{Item="Microsoft.CommsPhone";Desc="Phone dialer component for calling features. Rarely used.";Suggested="Remove unless you use calling features and need it for accessibility."},
+    @{Item="Microsoft.Wallet";Desc="Digital wallet app for storing payment cards. Deprecated.";Suggested="Remove, it's obsolete."},
+    @{Item="Microsoft.MixedReality.Portal";Desc="Portal for setting up and managing VR headsets. Safe to remove if not using VR.";Suggested="Remove, it's obsolete."},
+    @{Item="MicrosoftCorporationII.MicrosoftFamily";Desc="Family safety and parental control features for Microsoft accounts.";Suggested="Remove unless you use Family Safety features."},
+    @{Item="Microsoft.BingSearch";Desc="Provides Bing search integration in Windows. Can be removed for privacy.";Suggested="Remove for privacy and performance."}
     #@{Item="Microsoft.Copilot";Desc="Launcher for Windows Copilot. Opens web-based assistant in a web browser."} #Moved to Bloatware_CortanaCopilot function
 ) | ForEach-Object { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 
 $Script:BloatlistWindowsCapabilities = @(
-    @{Item="Browser.InternetExplorer";Desc="Legacy Internet Explorer browser. Deprecated and insecure. Remove unless needed for legacy apps."},
-    @{Item="Media.WindowsMediaPlayer";Desc="Classic Windows Media Player. Useful for legacy media formats. Safe to remove if unused."},
-    @{Item="Microsoft.Wallpapers.Extended";Desc="Adds extra wallpapers and themes. Minimal impact. Remove to save disk space."},
-    @{Item="Hello.Face";Desc="Facial recognition login via Windows Hello. Requires IR-capable camera. Remove if not using Windows Hello."},
-    @{Item="Language.Handwriting";Desc="Enables handwriting input with pen or touch. Remove if not using tablet or stylus features."},
-    @{Item="Language.OCR";Desc="Optical Character Recognition for extracting text from images. Required for tools like PowerToys Text Extractor."},
-    @{Item="Language.Speech";Desc="Speech recognition for dictation and voice commands. Used by some video games. Remove if not using voice input."},
-    @{Item="Language.TextToSpeech";Desc="Text-to-Speech voices (e.g., Microsoft David, Zira). Used by Narrator, video games, and accessibility tools. Remove if not needed."}
+    @{Item="Browser.InternetExplorer";Desc="Legacy Internet Explorer browser. Deprecated and insecure. Remove unless needed for legacy apps.";Suggested="Remove for security."},
+    @{Item="Media.WindowsMediaPlayer";Desc="Classic Windows Media Player. Useful for legacy media formats. Safe to remove if unused.";Suggested="Remove unless you use it for legacy media playback."},
+    @{Item="Microsoft.Wallpapers.Extended";Desc="Adds extra wallpapers and themes. Minimal impact. Remove to save disk space.";Suggested="Remove to save disk space."},
+    @{Item="Hello.Face";Desc="Facial recognition login via Windows Hello. Requires IR-capable camera. Remove if not using Windows Hello.";Suggested="Remove for privacy if not using Windows Hello."},
+    @{Item="Language.Handwriting";Desc="Enables handwriting input with pen or touch. Remove if not using tablet or stylus features.";Suggested="Remove unless you use a tablet or stylus for handwritten input."},
+    @{Item="Language.OCR";Desc="Optical Character Recognition for extracting text from images. Required for tools like PowerToys Text Extractor.";Suggested="Skip (Keep), many tools rely on OCR."},
+    @{Item="Language.Speech";Desc="Speech recognition for dictation and voice commands. Used by some video games. Remove if not using voice input.";Suggested="Skip (Keep), needed for voice to text, voice commands, and some games."},
+    @{Item="Language.TextToSpeech";Desc="Text-to-Speech voices (e.g., Microsoft David, Zira). Used by Narrator, video games, and accessibility tools. Remove if not needed.";Suggested="Skip (Keep), needed for Narrator, some accessibility tools, apps, and games."}
 ) | ForEach-Object { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 
 $Script:BloatlistServices = @(
     #@{Item="WSearch";Desc="Windows Search. Needed to find files in the Start Menu and File Explorer. Disable only if you have a search alternative."},
-    @{Item="DiagTrack";Desc="Connected User Experiences and Telemetry. Sends diagnostic and usage data to Microsoft. Disable for privacy and performance."},
-    @{Item="icssvc";Desc="Windows Mobile Hotspot Service. Enables sharing your internet connection. Disable if not using hotspot features."},
-    @{Item="WbioSrvc";Desc="Windows Biometric Service. Required for fingerprint or facial recognition login. Disable if not using biometrics."},
+    @{Item="DiagTrack";Desc="Connected User Experiences and Telemetry. Sends diagnostic and usage data to Microsoft. Disable for privacy and performance.";Suggested="Disable for privacy and performance."},
+    @{Item="icssvc";Desc="Windows Mobile Hotspot Service. Enables sharing your internet connection. Disable if not using hotspot features.";Suggested="Disable if not using hotspot features."},
+    @{Item="WbioSrvc";Desc="Windows Biometric Service. Required for fingerprint or facial recognition login. Disable if not using biometrics.";Suggested="Disable if not using biometrics."},
     #@{Item="MixedRealityOpenXRSvc";Desc="Deprecated Mixed Reality VR system."}, #Handled elsewhere to remove Mixed Reality
-    @{Item="WMPNetworkSvc";Desc="Windows Media Player Network Sharing. Shares media libraries over the network. Disable if not using WMP streaming."},
-    @{Item="wisvc";Desc="Windows Insider Service. Supports Insider builds. Disable if not enrolled in the Insider Program."},
+    @{Item="WMPNetworkSvc";Desc="Windows Media Player Network Sharing. Shares media libraries over the network. Disable if not using WMP streaming.";Suggested="Disable if not using WMP streaming."},
+    @{Item="wisvc";Desc="Windows Insider Service. Supports Insider builds. Disable if not enrolled in the Insider Program.";Suggested="Disable, Insider Program provides unstable bleeding-edge updates."},
     #@{Item="WerSvc";Desc="Error Reporting"}, #Handled in Privacy_DisableErrorReporting function
-    @{Item="WalletService";Desc="Hosts objects for Wallet apps. Legacy feature. Safe to disable."},
-    @{Item="SysMain";Desc="SysMain (formerly SuperFetch). Preloads frequently used apps into RAM. Disable on SSD-only systems to reduce resource usage."},
+    @{Item="WalletService";Desc="Hosts objects for Wallet apps. Legacy feature. Safe to disable.";Suggested="Disable, it's obsolete."},
+    @{Item="SysMain";Desc="SysMain (formerly SuperFetch). Preloads frequently used apps into RAM.";Suggested="Skip (Keep) if you have ANY hard-disk drives. Disable only if you have ALL SSD storage."},
     #@{Item="svsvc";Desc="Spot Verifier. Verifies file system integrity during restore operations. Disable if not using System Restore."},
     #@{Item="SCPolicySvc";Desc="Smart Card Removal Policy"}, #Handled in Bloatware_SmartCardServices function
     #@{Item="ScDeviceEnum";Desc="Smart Card Device Enumeration Service"}, #Handled in Bloatware_SmartCardServices function
     #@{Item="SCardSvr";Desc="Smart Card"}, #Handled in Bloatware_SmartCardServices function
-    @{Item="RetailDemo";Desc="Retail Demo Service. Used in store demo units. Disable unless device is in retail demo mode."},
+    @{Item="RetailDemo";Desc="Retail Demo Service. Used in store demo units. Disable unless device is in retail demo mode.";Suggested="Disable, this is useless."},
     #@{Item="UmRdpService";Desc="Remote Desktop Services UserMode Port Redirector"}, #Handled in Bloatware_RemoteDesktopServices function
     #@{Item="TermService";Desc="Remote Desktop Services"}, #Handled in Bloatware_RemoteDesktopServices function
     #@{Item="SessionEnv";Desc="Remote Desktop Configuration"}, #Handled in Bloatware_RemoteDesktopServices function
@@ -2476,21 +2616,21 @@ $Script:BloatlistServices = @(
     #@{Item="TroubleshootingSvc";Desc="Recommended Troubleshooting Service"},
     #@{Item="wercplsupport";Desc="Problem Reports Control Panel Support"},
     #@{Item="PrintNotify";Desc="Printer Extensions and Notifications"},
-    @{Item="PhoneSvc";Desc="Manages telephony state. Legacy service for dial-up and modem support. Disable if not using telephony features."},
-    @{Item="SEMgrSvc";Desc="Secure Element and NFC Manager. Used for mobile payments. Disable if not using NFC or Wallet features."},
-    @{Item="WpcMonSvc";Desc="Parental Controls monitoring. Disable if not using Family Safety features."},
+    @{Item="PhoneSvc";Desc="Manages telephony state. Legacy service for dial-up and modem support. Disable if not using telephony features.";Suggested="Disable, unless you have edge-case need for it."},
+    @{Item="SEMgrSvc";Desc="Secure Element and NFC Manager. Used for mobile payments. Disable if not using NFC or Wallet features.";Suggested="Disable unless you use your computer as a cash register."},
+    @{Item="WpcMonSvc";Desc="Parental Controls monitoring. Disable if not using Family Safety features.";Suggested="Disable unless you use Family Safety features."},
     #@{Item="CscService";Desc="Offline Files"},
     #@{Item="InstallService";Desc="Microsoft Store Install Service"},
-    @{Item="SmsRouter";Desc="SMS Router Service. Legacy messaging support. Safe to disable."},
+    @{Item="SmsRouter";Desc="SMS Router Service. Legacy messaging support. Safe to disable.";Suggested="Disable, it's obsolete."},
     #@{Item="smphost";Desc="Microsoft Storage Spaces SMP"},
     #@{Item="NgcCtnrSvc";Desc="Microsoft Passport Container"},
     #@{Item="MsKeyboardFilter";Desc="Microsoft Keyboard Filter"},
     #@{Item="cloudidsvc";Desc="Microsoft Cloud Identity Service"},
     #@{Item="wlidsvc";Desc="Microsoft Account Sign-in Assistant"},
     #@{Item="*diagnosticshub*";Desc="Microsoft (R) Diagnostics Hub Standard Collector Service"},
-    @{Item="lfsvc";Desc="Geolocation Service. Provides location data to apps. Disable for privacy if not using location-aware apps."},
+    @{Item="lfsvc";Desc="Geolocation Service. Provides location data to apps.";Suggested="Skip (Keep) if you want any location-based features including for web browsers. Disable for privacy without location features."},
     #@{Item="fhsvc";Desc="File History Service"},
-    @{Item="Fax";Desc="Fax Service. Legacy support for fax devices. Disable if not using fax hardware."},
+    @{Item="Fax";Desc="Fax Service. Legacy support for fax devices. Disable if not using fax hardware.";Suggested="Disable unless you use a fax machine with your PC."},
     #@{Item="embeddedmode";Desc="Embedded Mode"},
     #@{Item="MapsBroker";Desc="Downloaded Maps Manager"}, #Handled by Bloatware_MicrosoftMaps function
     #@{Item="TrkWks";Desc="Distributed Link Tracking Client"},
@@ -2498,7 +2638,7 @@ $Script:BloatlistServices = @(
     #@{Item="WdiServiceHost";Desc="Diagnostic Service Host"},
     #@{Item="DPS";Desc="Diagnostic Policy Service"},
     #@{Item="diagsvc";Desc="Diagnostic Execution Service"},
-    @{Item="DusmSvc";Desc="Data Usage Manager. Tracks network usage. Disable if not monitoring data usage."}
+    @{Item="DusmSvc";Desc="Data Usage Manager. Tracks network usage. Disable if not monitoring data usage.";Suggested="Disable unless you need to monitor data usage with your internet provider."}
 ) | ForEach-Object { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 #endregion
 
@@ -2564,8 +2704,8 @@ $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 if (($sid -eq 'S-1-5-18') -or ($Target -ne "Online")) {
     Write-Header -Text "Bypass Microsoft NRO Nags Selection" -Large
     Write-Host "`n*Note: This option only works if the debloat script is run before OOBE has completed. It will do no harm and have no impact if enabled after setup.*`n" -ForegroundColor Yellow
-    $BypassNROResponse = Read-PromptUser -Title "Bypass Microsoft NRO Nags" -Message "`nDo you want to bypass Microsoft nags to set up a Microsoft account and Privacy questions during the Out-Of-Box Experience?`nThis will also allow you to create a Local User Account." -SuggestedAction "Yes, for privacy and control of your PC." -DefaultResponse "No" -ValidResponses @("Yes", "No") -HelpText "Selecting 'Yes' will set registry values to bypass Microsoft nags during OOBE. Selecting 'No' will leave them enabled."
-    if ($BypassNROResponse -eq "Yes") {
+    $BypassNROResponse = Read-PromptUser -Title "Bypass Microsoft NRO Nags" -Message "`nDo you want to bypass Microsoft nags to set up a Microsoft account and Privacy questions during the Out-Of-Box Experience?`nThis will also allow you to create a Local User Account." -SuggestedAction "Bypass, for privacy and control of your PC." -DefaultResponse "Skip" -ValidResponses @("Bypass") -InfoText "Selecting 'Bypass' will set registry values to bypass Microsoft nags during OOBE. Selecting 'Skip' will leave them enabled."
+    if ($BypassNROResponse -eq "Bypass") {
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\OOBE" -Name "BypassNRO" -PropertyType DWord -Value 1
         Set-RegistryValue -Path "Reg_HKLM_SOFTWARE:\Microsoft\Windows\CurrentVersion\OOBE" -Name "DisablePrivacyExperience" -PropertyType DWord -Value 1
         Write-Host "`nMicrosoft NRO Nags Bypassed." -ForegroundColor White -BackgroundColor DarkCyan
@@ -2626,7 +2766,7 @@ if ($BloatSelectionList.Count -gt 0) {
 
 # Check if user wants to remove Sponsored Appx Bloatware and add to list if so
 Write-Header -Text "Sponsored Bloatware Apps"
-Write-Header -Text "`The following section will offer to remove ALL Sponsored apps in one go.`nGenerally you will want to answer yes and if you want any of the apps just later install it from the Windows Store." -Notice
+Write-Header -Text "`The following section will offer to remove ALL Sponsored apps in one go.`nGenerally you will want to answer 'Remove' and if you want any of the apps just later install it from the Windows Store." -Notice
 Get-AppxSponsoredRemovalSelection
 
 # Proceed to remove selected Appx Bloatware
@@ -2707,8 +2847,8 @@ Bloatware_CortanaCopilot
 Bloatware_CopilotRecall
 
 # Microsoft Edge Removal
-$EdgeRemoveResult = Bloatware_MicrosoftEdge
-if ($EdgeRemoveResult -eq "Yes") {
+Bloatware_MicrosoftEdge
+if ($Script:EdgeRemoveResponse -eq "Remove") {
     # Refresh Appx package and capabilities lists after Edge removal
     Write-Host "`nRemoveing Edge as the default PDF handler..." -ForegroundColor Green
     Tweak_BlockEdgePDF -Auto
@@ -2823,12 +2963,12 @@ Tweak_EnableLongPathSupport
 Tweak_DisableLastAccessTime
 
 # Disable Edge First Run Experience
-if ($EdgeRemoveResult -ne "Yes") {
+if ($Script:EdgeRemoveResponse -ne "Remove") {
     Tweak_DisableEdgeFirstRunExperience
 }
 
 # Disable Edge as Default PDF Handler
-if ($EdgeRemoveResult -ne "Yes") {
+if ($Script:EdgeRemoveResponse -ne "Remove") {
     Tweak_BlockEdgePDF
 }
 
@@ -2840,15 +2980,15 @@ Tweak_EnableVerboseStartupShutdown
 
 # Disable Accessibility Shortcuts
 Write-Header -Text "Disable Accessibility Shortcuts"
-$DisableAccessibilityShortcutsResponse = Read-PromptUser -Title "Disable Accessibility Shortcuts" -Message "`nDo you want to disable the accessibility shortcuts for Sticky Keys, Toggle Keys, and Filter Keys?`nAnswer Yes to disable all, Choose to choose individually, or No to leave all three intact." -SuggestedAction "Yes, if no one with accessibility needs uses this PC." -DefaultResponse "No" -ValidResponses @("Yes", "Choose", "No") -HelpText "Selecting 'Yes' will disable the keyboard shortcuts for all three tools. Selecting 'Choose' will prompt you for each item separately. Selecting 'No' will not change these settings."
-if ($DisableAccessibilityShortcutsResponse -eq "Yes") {
+$DisableAccessibilityShortcutsResponse = Read-PromptUser -Title "Accessibility Shortcuts" -Message "`nDo you want to disable the accessibility shortcuts for Sticky Keys, Toggle Keys, and Filter Keys?`nAnswer Yes to disable all, Choose to choose individually, or No to leave all three intact." -SuggestedAction "Disable, if no one with accessibility needs uses this PC." -DefaultResponse "Skip" -ValidResponses @("Disable", "Choose") -InfoText "Selecting 'Disable' will disable the keyboard shortcuts for all three tools. Selecting 'Choose' will prompt you for each item separately. Selecting 'Skip' will not change any of these settings."
+if ($DisableAccessibilityShortcutsResponse -eq "Disable") {
     Write-Host "Removing Accessibility Shortcuts..." -ForegroundColor Green
     Start-Sleep -Seconds 2
     # Disable all three accessibility shortcuts
     Tweak_DisableStickyKeysShortcut -Auto
     Tweak_DisableFilterKeysShortcut -Auto
     Tweak_DisableToggleKeysShortcut -Auto
-} elseif ($DisableAccessibilityShortcutsResponse -eq "Select") {
+} elseif ($DisableAccessibilityShortcutsResponse -eq "Choose") {
     # Disable Sticky Keys Shortcut
     Tweak_DisableStickyKeysShortcut
     # Disable Filter Keys Shortcut
