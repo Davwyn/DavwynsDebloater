@@ -1,7 +1,6 @@
 [CmdletBinding()]
     Param(
-        [Parameter(Mandatory=$false)][ValidatePattern('^(Online|.:\\)$')][String]$Target,
-        [Parameter(Mandatory=$false)][Bool]$Debloat
+        [Parameter(Mandatory=$false)][ValidatePattern('^(Online|.:\\)$')][String]$Target
     )
 
 # TODO:
@@ -23,16 +22,11 @@ If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
     Exit
 }
 
-$ScriptVersion = "3.0.0"
-$ScriptVersionDate = "Oct 3, 2025"
+$ScriptVersion = "3.0.1"
+$ScriptVersionDate = "Jan 12, 2026"
 
 $border = "=" * 40
 $borderSmall = "-" * 40
-
-Write-Host "`n`n$border" -ForegroundColor Cyan
-Write-Host "Script Version: $ScriptVersion"
-Write-Host "Script Modified Date: $ScriptVersionDate"
-Write-Host $border -ForegroundColor Cyan
 
 # Credits
 # Stefan Kanthak https://skanthak.hier-im-netz.de/ten.html The 10 Commandments for Windows™ 10 (plus an 11th for Windows™ 11)
@@ -56,6 +50,13 @@ If (!(Test-Path $LogFolder)) {
     Write-Host "The folder $LogFolder was successfully created."
 }
 Start-Transcript -OutputDirectory $LogFolder
+
+Write-Host "`n`n$border" -ForegroundColor Cyan
+Write-Host "Script Version: $ScriptVersion"
+Write-Host "Script Modified Date: $ScriptVersionDate"
+Write-Host $border -ForegroundColor Cyan
+
+Write-Host "`nTarget Windows Installation: $Target`n" -ForegroundColor Green
 
 #region Script-wide Variables
 ## General Variables
@@ -806,8 +807,7 @@ function Get-PackagesCapabilities {
 
 function Get-BloatRemovalSelection {
     param (
-        [Parameter(Mandatory=$true)][PSCustomObject[]]$SelectionList,
-        [switch]$Auto
+        [Parameter(Mandatory=$true)][PSCustomObject[]]$SelectionList
     )
     $RemovalList = @()
     foreach ($bloatItem in $SelectionList) {
@@ -817,11 +817,7 @@ function Get-BloatRemovalSelection {
         Write-Host "`n$itemName" -ForegroundColor Yellow
         Write-Host "$itemDesc" -ForegroundColor Cyan
         if ($itemSuggest) { Write-Host "$ItemSuggest" -ForegroundColor Green }
-        if ($Auto) {
-            $response = "Remove"
-        } else {    
-            $response = Read-PromptUser -Title "Remove Bloatware Item" -Message "Do you want to remove the following item?" -SuggestedAction "$($bloatItem.Suggested)" -DefaultResponse "Skip" -ValidResponses @("Remove") -InfoText "Selecting 'Remove' will add this item to the removal list to be uninstalled. Selecting 'Skip' will skip this item."
-        }
+        $response = Read-PromptUser -Title "Remove Bloatware Item" -Message "Do you want to remove the following item?" -SuggestedAction "$($bloatItem.Suggested)" -DefaultResponse "Skip" -ValidResponses @("Remove") -InfoText "Selecting 'Remove' will add this item to the removal list to be uninstalled. Selecting 'Skip' will skip this item."
         if ($response -eq "Remove") {
             $RemovalList += $itemName
             Write-Host "`n$itemName added to removal list.`n" -ForegroundColor Green
@@ -2071,19 +2067,18 @@ function Tweak_ShowHideSystemTrayIcons {
     Write-Header -Text "Show or Hide System Tray Icons by Default"
     $response = $null
     
-    $response = Read-PromptUser -Title "Show or Hide Tray Icons by Default" -Message "`nDo you want to Show All System Tray icons by default, Hide them (default), or Skip changing anything?" -SuggestedAction "Hide if you want a clean taskbar or Show if you want to always see all icons.." -DefaultResponse "Skip" -ValidResponses @("Show", "Hide") -InfoText "Selecting 'Show' will show hidden tray icons by default. Selecting 'Hide' will hide icons by default which is usual Windows behavior. Selecting 'Skip' will not change this setting."
+    $response = Read-PromptUser -Title "Show or Hide Tray Icons by Default" -Message "`nDo you want to Show All System Tray icons by default, Hide them (default), or Skip changing anything?" -SuggestedAction "Hide if you want a clean taskbar or Show if you want to always see all icons.." -DefaultResponse "Skip" -ValidResponses @("Hide", "Show") -InfoText "Selecting 'Show' will show hidden tray icons by default. Selecting 'Hide' will hide icons by default which is usual Windows behavior. Selecting 'Skip' will not change this setting."
+    if ($response -eq "Hide") {
+        Write-Host "`nSetting Registry settings to hide tray icons by default..." -ForegroundColor White -BackgroundColor DarkGreen
+        Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "EnableAutoTray" -Value 1 -PropertyType DWord
+        Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "EnableAutoTray" -Value 1 -PropertyType DWord
+        Write-Host "`nTray icons will now be hidden by default." -ForegroundColor White -BackgroundColor DarkCyan
+    }
     if ($response -eq "Show") {
         Write-Host "`nSetting Registry settings to show hidden tray icons by default..." -ForegroundColor White -BackgroundColor DarkGreen
         Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "EnableAutoTray" -Value 0 -PropertyType DWord
         Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "EnableAutoTray" -Value 0 -PropertyType DWord
         Write-Host "`nHidden tray icons will now be shown by default." -ForegroundColor White -BackgroundColor DarkCyan
-    } elseif ($response -eq "Hide") {
-        Write-Host "`nSetting Registry settings to hide tray icons by default..." -ForegroundColor White -BackgroundColor DarkGreen
-        Set-RegistryValue -Path "Reg_HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "EnableAutoTray" -Value 1 -PropertyType DWord
-        Set-RegistryValue -Path "Reg_HKDefaultUser:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "EnableAutoTray" -Value 1 -PropertyType DWord
-        Write-Host "`nTray icons will now be hidden by default." -ForegroundColor White -BackgroundColor DarkCyan
-    } else {
-        Write-Host "`nSkipping Tray Icon visibility changes." -ForegroundColor White -BackgroundColor DarkCyan
     }
 }
 
@@ -2571,8 +2566,8 @@ $Script:BloatlistAppxJunk = @(
     #@{Item="Microsoft.WindowsMaps";Desc="Maps and navigation app with offline support."}, #Moved to Bloatware_MicrosoftMaps function
     @{Item="Microsoft.WindowsPhone";Desc="Legacy app for syncing with Windows Phone devices. Deprecated.";Suggested="Remove, it's obsolete."},
     @{Item="Microsoft.WindowsSoundRecorder";Desc="Basic voice recording app. Can be replaced with third-party tools.";Suggested="Remove, there are better alternatives."},
-    @{Item="Microsoft.ZuneMusic";Desc="Legacy music app. Replaced by Groove and Media Player.";Suggested="Remove, there are better alternatives."},
-    @{Item="Microsoft.ZuneVideo";Desc="Legacy video app. Replaced by Movies & TV.";Suggested="Remove, there are better alternatives."},
+    @{Item="Microsoft.ZuneMusic";Desc="Legacy and basic music app.";Suggested="Remove, there are better alternatives."},
+    @{Item="Microsoft.ZuneVideo";Desc="Legacy and basic video app. Replaced by Movies & TV.";Suggested="Remove, there are better alternatives."},
     @{Item="Microsoft.CommsPhone";Desc="Phone dialer component for calling features. Rarely used.";Suggested="Remove unless you use calling features and need it for accessibility."},
     @{Item="Microsoft.Wallet";Desc="Digital wallet app for storing payment cards. Deprecated.";Suggested="Remove, it's obsolete."},
     @{Item="Microsoft.MixedReality.Portal";Desc="Portal for setting up and managing VR headsets. Safe to remove if not using VR.";Suggested="Remove, it's obsolete."},
