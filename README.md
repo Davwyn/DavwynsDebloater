@@ -6,3 +6,11 @@ The script entirely uses Group Policies, Registry Settings, and built-in Windows
 The script also does not rely on 'hacky' tricks with the one exception of it's method to remove Microsoft Edge from the system.
 
 This script is utitlized by [MurrpTools](https://github.com/Davwyn/MurrpTools-WinKit)
+
+To run the latest version of this script run the following in PowerShell as administrator:
+
+ ```PowerShell
+ & ([scriptblock]::Create((irm "https://raw.githubusercontent.com/Davwyn/DavwynsDebloater/refs/heads/main/Davwyn_Debloat.ps1")))
+ ```
+ 
+ 
